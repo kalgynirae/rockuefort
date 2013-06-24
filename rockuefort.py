@@ -18,20 +18,31 @@ if __name__ == '__main__':
 
     # Load and evaluate queries
     files = OrderedDict()
+    queries = []
     with open(args['<file>']) as f:
-        queries = [line.strip() for line in f]
-    for query in queries:
+        for line in f:
+            try:
+                c, query = line.strip().split(':', 1)
+                c = int(c)
+            except ValueError:
+                c = 1
+                query = line.strip()
+            queries.append((c, query))
+    for c, query in queries:
         r = subprocess.check_output(['quodlibet', '--print-query', query])
         matched_files = [mf.decode() for mf in r.splitlines() if mf]
+        nm = len(matched_files)
+        if nm != c:
+            log("Matched {} (expected {}): {}".format(nm, c, query))
+            for file in matched_files:
+                log("  match: {}".format(file))
         for file in matched_files:
             files.setdefault(file, []).append(query)
-        if not matched_files:
-            log("No match: {}".format(query))
 
     # Check for multiply-matched files
     for file, queries in files.items():
         if len(queries) > 1:
-            log("Matched multiple: {}".format(file))
+            log("Matched by multiple: {}".format(file))
             for q in queries:
                 log("  query: {}".format(q))
 
