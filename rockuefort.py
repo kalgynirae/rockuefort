@@ -5,6 +5,7 @@ Usage: rockuefort copy <file> <destination>
        rockuefort list <file>
 """
 from collections import OrderedDict
+import os.path
 import subprocess
 import sys
 
@@ -16,8 +17,7 @@ def log(*args, **kwargs):
 if __name__ == '__main__':
     args = docopt(__doc__)
 
-    # Load and evaluate queries
-    files = OrderedDict()
+    # Load queries
     queries = []
     with open(args['<file>']) as f:
         for line in f:
@@ -28,15 +28,32 @@ if __name__ == '__main__':
                 c = 1
                 query = line.strip()
             queries.append((c, query))
+
+    # Query quodlibet and build list of files
+    files = OrderedDict()
     for c, query in queries:
         r = subprocess.check_output(['quodlibet', '--print-query', query])
         matched_files = [mf.decode() for mf in r.splitlines() if mf]
-        nm = len(matched_files)
+
+        # De-duplicate by preferring .ogg, .mp3 versions of songs
+        matched_files_exts = {}
+        for file in matched_files:
+            base, ext = os.path.splitext(file)
+            matched_files_exts.setdefault(base, []).append(ext)
+        matched_files_deduped = []
+        for base, exts in matched_files_exts.items():
+            try:
+                ext = next(e for e in '.ogg .mp3 .flac'.split() if e in exts)
+            except StopIteration:
+                ext = exts[0]
+            matched_files_deduped.append(base + ext)
+
+        nm = len(matched_files_deduped)
         if nm != c:
             log("Matched {} (expected {}): {}".format(nm, c, query))
-            for file in matched_files:
+            for file in matched_files_deduped:
                 log("  match: {}".format(file))
-        for file in matched_files:
+        for file in matched_files_deduped:
             files.setdefault(file, []).append(query)
 
     # Check for multiply-matched files
