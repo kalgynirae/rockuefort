@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     # Load queries
     queries = []
-    with open(args['<file>']) as f:
+    with open(args['<playlist>']) as f:
         for line in f:
             try:
                 c, query = line.strip().split(':', 1)
