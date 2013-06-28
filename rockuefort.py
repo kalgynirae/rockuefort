@@ -1,18 +1,34 @@
 #!/usr/bin/python3
 """
-Usage: rockuefort copy <file> <destination>
-       rockuefort symlink <file> <destination>
-       rockuefort list <file>
+Usage: rockuefort copy <playlist> <destination>
+       rockuefort link <playlist> <destination>
+       rockuefort list <playlist>
 """
 from collections import OrderedDict
-import os.path
+import itertools
+import os
+import os.path as op
 import subprocess
 import sys
+import tempfile
 
 from docopt import docopt
 
 def log(*args, **kwargs):
     print("rockuefort:", *args, file=sys.stderr, **kwargs)
+
+def make_links(targets, dest_dir):
+    for target in targets:
+        base, ext = op.splitext(op.join(dest_dir, op.basename(target)))
+        for n in itertools.count():
+            link_name = '{}-{}{}'.format(base, n, ext) if n else base + ext
+            try:
+                os.symlink(target, link_name)
+            except FileExistsError:
+                log("Filename collision; renamed to: {}"
+                    "".format(op.basename(link_name)))
+            else:
+                break
 
 if __name__ == '__main__':
     args = docopt(__doc__)
@@ -38,7 +54,7 @@ if __name__ == '__main__':
         # De-duplicate by preferring .ogg, .mp3 versions of songs
         matched_files_exts = {}
         for file in matched_files:
-            base, ext = os.path.splitext(file)
+            base, ext = op.splitext(file)
             matched_files_exts.setdefault(base, []).append(ext)
         matched_files_deduped = []
         for base, exts in matched_files_exts.items():
@@ -48,6 +64,7 @@ if __name__ == '__main__':
                 ext = exts[0]
             matched_files_deduped.append(base + ext)
 
+        # Check whether the query matched the expected number of files
         nm = len(matched_files_deduped)
         if nm != c:
             log("Matched {} (expected {}): {}".format(nm, c, query))
@@ -65,11 +82,18 @@ if __name__ == '__main__':
 
     # Perform the requested action
     if args['copy']:
-        log("Copying to {}".format(args['<destination>']))
-        ...
-    elif args['symlink']:
-        log("Symlinking to {}".format(args['<destination>']))
-        ...
+        dest = args['<destination>']
+        with tempfile.TemporaryDirectory() as temp_dir:
+            make_links(files, temp_dir)
+            rsync_args = ['rsync', '-vrLt', '--delete', temp_dir + '/', dest]
+            subprocess.check_call(rsync_args)
+    elif args['link']:
+        dest = args['<destination>']
+        try:
+            os.mkdir(dest)
+        except FileExistsError:
+            pass
+        make_links(files, dest)
     else:  # args['list']
         for file in files:
             print(file)
