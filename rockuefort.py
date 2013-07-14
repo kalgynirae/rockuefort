@@ -6,6 +6,7 @@ Usage: rockuefort copy <playlist> <destination>
 """
 from collections import OrderedDict
 import itertools
+import operator
 import os
 import os.path as op
 import subprocess
@@ -18,20 +19,29 @@ def log(*args, **kwargs):
     print("rockuefort:", *args, file=sys.stderr, **kwargs)
 
 def make_links(targets, dest_dir):
-    for target in targets:
-        base, ext = op.splitext(op.join(dest_dir, op.basename(target)))
-        for n in itertools.count():
-            link_name = '{}-{}{}'.format(base, n, ext) if n else base + ext
-            try:
-                os.symlink(target, link_name)
-            except FileExistsError:
-                log("Filename collision; renamed to: {}"
-                    "".format(op.basename(link_name)))
-            else:
-                break
+    digits = len(str(len(targets)))
+    for i, target in enumerate(targets, 1):
+        basename = ("{:0%d}-{}" % digits).format(i, op.basename(target))
+        dest = op.join(dest_dir, basename)
+        try:
+            os.symlink(target, dest)
+        except FileExistsError:
+            log("File exists: {}".format(dest))
 
 if __name__ == '__main__':
     args = docopt(__doc__)
+
+    # Try to make directories
+    dest = args['<destination>']
+    if dest:
+        try:
+            os.mkdir(dest)
+        except FileExistsError:
+            fs = os.listdir(dest)
+            if args['copy'] and fs and '.rockuefort-dir' not in fs:
+                log("Refusing to write to non-empty non-rockuefort directory.")
+                log("Place a .rockuefort-dir file in the directory to force.")
+                sys.exit(1)
 
     # Load queries
     queries = []
@@ -46,7 +56,7 @@ if __name__ == '__main__':
             queries.append((c, query))
 
     # Query quodlibet and build list of files
-    files = OrderedDict()
+    files = []
     for c, query in queries:
         r = subprocess.check_output(['quodlibet', '--print-query', query])
         matched_files = [mf.decode() for mf in r.splitlines() if mf]
@@ -71,28 +81,18 @@ if __name__ == '__main__':
             for file in matched_files_deduped:
                 log("  match: {}".format(file))
         for file in matched_files_deduped:
-            files.setdefault(file, []).append(query)
-
-    # Check for multiply-matched files
-    for file, queries in files.items():
-        if len(queries) > 1:
-            log("Matched by multiple: {}".format(file))
-            for q in queries:
-                log("  query: {}".format(q))
+            files.append(file)
 
     # Perform the requested action
     if args['copy']:
         dest = args['<destination>']
         with tempfile.TemporaryDirectory() as temp_dir:
             make_links(files, temp_dir)
+            open(op.join(temp_dir, '.rockuefort-dir'), 'a').close()
             rsync_args = ['rsync', '-vrLt', '--delete', temp_dir + '/', dest]
             subprocess.check_call(rsync_args)
     elif args['link']:
         dest = args['<destination>']
-        try:
-            os.mkdir(dest)
-        except FileExistsError:
-            pass
         make_links(files, dest)
     else:  # args['list']
         for file in files:
