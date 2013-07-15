@@ -87,10 +87,16 @@ if __name__ == '__main__':
             log("Performing a dry run of rsync...")
             rsync_args = ['rsync', '-vrLt', '--dry-run', '--delete',
                           temp_dir + '/', dest]
-            subprocess.check_call(rsync_args)
+            try:
+                subprocess.check_call(rsync_args)
+            except subprocess.CalledProcessError:
+                pass
             if ask("Proceed with the rsync?"):
                 rsync_args.remove('--dry-run')
-                subprocess.check_call(rsync_args)
+                try:
+                    subprocess.check_call(rsync_args)
+                except subprocess.CalledProcessError:
+                    pass
     elif args['link']:
         dest = args['<destination>']
         try:
