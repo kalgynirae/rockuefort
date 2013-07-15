@@ -15,6 +15,14 @@ import tempfile
 
 from docopt import docopt
 
+def ask(question):
+    while True:
+        answer = input("{} (Y/n): ".format(question))
+        if answer in "Yy":
+            return True
+        elif answer in "Nn":
+            return False
+
 def log(*args, **kwargs):
     print("rockuefort:", *args, file=sys.stderr, **kwargs)
 
@@ -30,18 +38,6 @@ def make_links(targets, dest_dir):
 
 if __name__ == '__main__':
     args = docopt(__doc__)
-
-    # Try to make directories
-    dest = args['<destination>']
-    if dest:
-        try:
-            os.mkdir(dest)
-        except FileExistsError:
-            fs = os.listdir(dest)
-            if args['copy'] and fs and '.rockuefort-dir' not in fs:
-                log("Refusing to write to non-empty non-rockuefort directory.")
-                log("Place a .rockuefort-dir file in the directory to force.")
-                sys.exit(1)
 
     # Load queries
     queries = []
@@ -88,11 +84,19 @@ if __name__ == '__main__':
         dest = args['<destination>']
         with tempfile.TemporaryDirectory() as temp_dir:
             make_links(files, temp_dir)
-            open(op.join(temp_dir, '.rockuefort-dir'), 'a').close()
-            rsync_args = ['rsync', '-vrLt', '--delete', temp_dir + '/', dest]
+            log("Performing a dry run of rsync...")
+            rsync_args = ['rsync', '-vrLt', '--dry-run', '--delete',
+                          temp_dir + '/', dest]
             subprocess.check_call(rsync_args)
+            if ask("Proceed with the rsync?"):
+                rsync_args.remove('--dry-run')
+                subprocess.check_call(rsync_args)
     elif args['link']:
         dest = args['<destination>']
+        try:
+            os.mkdir(dest)
+        except FileExistsError:
+            pass
         make_links(files, dest)
     else:  # args['list']
         for file in files:
