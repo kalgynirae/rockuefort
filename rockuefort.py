@@ -1,13 +1,11 @@
 """
-Usage: rockuefort copy <playlist> <destination>
-       rockuefort link <playlist> <destination>
+Usage: rockuefort index <directory>
        rockuefort list <playlist>
+       rockuefort copy <playlist> <destination>
+       rockuefort link <playlist> <destination>
 """
-from collections import OrderedDict
-import itertools
-import operator
 import os
-import os.path as op
+import os.path as path
 import subprocess
 import sys
 import tempfile
@@ -29,8 +27,8 @@ def log(*args, **kwargs):
 def make_links(targets, dest_dir):
     digits = len(str(len(targets)))
     for i, target in enumerate(targets, 1):
-        basename = ("{:0%d}-{}" % digits).format(i, op.basename(target))
-        dest = op.join(dest_dir, basename)
+        basename = ("{:0%d}-{}" % digits).format(i, path.basename(target))
+        dest = path.join(dest_dir, basename)
         try:
             os.symlink(target, dest)
         except FileExistsError:
@@ -60,7 +58,7 @@ if __name__ == '__main__':
         # De-duplicate by preferring .ogg, .mp3 versions of songs
         matched_files_exts = {}
         for file in matched_files:
-            base, ext = op.splitext(file)
+            base, ext = path.splitext(file)
             matched_files_exts.setdefault(base, []).append(ext)
         matched_files_deduped = []
         for base, exts in matched_files_exts.items():
