@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 """
 Usage: rockuefort copy <playlist> <destination>
        rockuefort link <playlist> <destination>
@@ -14,6 +13,7 @@ import sys
 import tempfile
 
 from docopt import docopt
+import mutagenx as mutagen
 
 def ask(question):
     while True:
