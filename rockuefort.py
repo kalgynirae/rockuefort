@@ -4,14 +4,18 @@ Usage: rockuefort index <directory>
        rockuefort copy <playlist> <destination>
        rockuefort link <playlist> <destination>
 """
+import operator
 import os
 import os.path as path
+import pickle
 import subprocess
 import sys
 import tempfile
 
 from docopt import docopt
 import mutagenx as mutagen
+
+CACHE_FILE = path.expanduser('~/.cache/rockuefort/index')
 
 def ask(question):
     while True:
@@ -21,8 +25,32 @@ def ask(question):
         elif answer in "Nn":
             return False
 
+def mkdir_if_needed(path):
+    try:
+        os.makedirs(path, exist_ok=True)
+    except FileExistsError as e:
+        if e.errno == 17:
+            # 17 means the permissions are abnormal, but we don't care
+            pass
+        else:
+            raise
+
+def index(directory):
+    with open(CACHE_FILE, 'wb') as out:
+        attrs = ['title', 'artist', 'album', 'genre']
+        songs = []
+        for base, dirs, files in os.walk(directory):
+            for file in (path.join(base, f) for f in files):
+                q = mutagen.File(file, easy=True)
+                if q:
+                    print(file)
+                    song = {attr: q.get(attr, []) for attr in attrs}
+                    song['file'] = file
+                    songs.append(song)
+        pickle.dump(songs, out)
+
 def log(*args, **kwargs):
-    print("rockuefort:", *args, file=sys.stderr, **kwargs)
+    print(*args, file=sys.stderr, **kwargs)
 
 def make_links(targets, dest_dir):
     digits = len(str(len(targets)))
@@ -37,23 +65,55 @@ def make_links(targets, dest_dir):
 if __name__ == '__main__':
     args = docopt(__doc__)
 
-    # Load queries
-    queries = []
+    # Try to load the cache
+    data = None
+    try:
+        opened = open(CACHE_FILE, 'rb')
+    except FileNotFoundError:
+        pass
+    else:
+        with opened as f:
+            try:
+                data = pickle.load(f)
+            except (pickle.UnpicklingError, EOFError):
+                pass
+
+    if not data and not args['index']:
+        print("Invalid cache. Please `rockuefort index` something first.",
+              file=sys.stderr)
+        sys.exit(1)
+
+    if args['index']:
+        mkdir_if_needed(path.dirname(CACHE_FILE))
+        index(args['<directory>'])
+        sys.exit(0)
+
+    # Load entries
+    entries = []
     with open(args['<playlist>']) as f:
         for line in f:
             try:
-                c, query = line.strip().split(':', 1)
+                c, rest = line.strip().split(':', 1)
                 c = int(c)
             except ValueError:
                 c = 1
-                query = line.strip()
-            queries.append((c, query))
+                rest = line.strip()
+            parts = rest.split('|')
+            queries = [part.split('=') for part in parts]
+            entries.append((c, queries))
 
     # Query quodlibet and build list of files
     files = []
-    for c, query in queries:
-        r = subprocess.check_output(['quodlibet', '--print-query', query])
-        matched_files = [mf.decode() for mf in r.splitlines() if mf]
+    for c, queries in entries:
+        matched_files = data
+        try:
+            for attr, value in queries:
+                matched_files = [x for x in data if value in x[attr]]
+        except ValueError:
+            log("Badly-formatted entry; skipping")
+            continue
+
+        matched_files = [x['file'] for x in matched_files]
 
         # De-duplicate by preferring .ogg, .mp3 versions of songs
         matched_files_exts = {}
@@ -63,7 +123,7 @@ if __name__ == '__main__':
         matched_files_deduped = []
         for base, exts in matched_files_exts.items():
             try:
-                ext = next(e for e in '.ogg .mp3 .flac'.split() if e in exts)
+                ext = next(e for e in ['.ogg', '.mp3'] if e in exts)
             except StopIteration:
                 ext = exts[0]
             matched_files_deduped.append(base + ext)
@@ -71,7 +131,7 @@ if __name__ == '__main__':
         # Check whether the query matched the expected number of files
         nm = len(matched_files_deduped)
         if nm != c:
-            log("Matched {} (expected {}): {}".format(nm, c, query))
+            log("Matched {} (expected {}): {}".format(nm, c, queries))
             for file in matched_files_deduped:
                 log("  match: {}".format(file))
         for file in matched_files_deduped:
