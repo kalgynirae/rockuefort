@@ -108,7 +108,8 @@ if __name__ == '__main__':
         matched_files = data
         try:
             for attr, value in queries:
-                matched_files = [x for x in data if value in x[attr]]
+                matched_files = [x for x in matched_files
+                                 if value in '\u2603'.join(x[attr])]
         except ValueError:
             log("Badly-formatted entry; skipping")
             continue
