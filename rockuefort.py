@@ -154,7 +154,8 @@ if __name__ == '__main__':
         with tempfile.TemporaryDirectory() as temp_dir:
             make_links(files, temp_dir)
             log("Performing a dry run of rsync...")
-            rsync_args = ['rsync', '-vrLt', '--dry-run', '--delete',
+            rsync_args = ['rsync', '--recursive', '--itemize-changes',
+                          '--copy-links', '--times', '--delete', '--dry-run',
                           temp_dir + '/', dest]
             try:
                 subprocess.check_call(rsync_args)
