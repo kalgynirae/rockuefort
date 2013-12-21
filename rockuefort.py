@@ -62,6 +62,16 @@ def make_links(targets, dest_dir):
         except FileExistsError:
             log("File exists: {}".format(dest))
 
+def normalize(list_or_string):
+    # We do substring matching on track attributes, but the attributes come as
+    # lists of strings (except for the 'file' attribute). So, when given a list
+    # we join its items together with unicode snowmen and return the result to
+    # do substring matching on.
+    if isinstance(list_or_string, list):
+        return '\u2603'.join(list_or_string)
+    else:
+        return list_or_string
+
 if __name__ == '__main__':
     args = docopt(__doc__)
 
@@ -109,7 +119,7 @@ if __name__ == '__main__':
         try:
             for attr, value in queries:
                 matched_files = [x for x in matched_files
-                                 if value in '\u2603'.join(x[attr])]
+                                 if value in normalize(x[attr])]
         except ValueError:
             log("Badly-formatted entry; skipping")
             continue
