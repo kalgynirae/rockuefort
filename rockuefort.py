@@ -68,9 +68,9 @@ def normalize(list_or_string):
     # we join its items together with unicode snowmen and return the result to
     # do substring matching on.
     if isinstance(list_or_string, list):
-        return '\u2603'.join(list_or_string)
+        return '\u2603'.join(map(str.lower, list_or_string))
     else:
-        return list_or_string
+        return list_or_string.lower()
 
 if __name__ == '__main__':
     args = docopt(__doc__)
@@ -108,7 +108,7 @@ if __name__ == '__main__':
             except ValueError:
                 c = 1
                 rest = line.strip()
-            parts = rest.split('|')
+            parts = rest.lower().split('|')
             queries = [part.split('=') for part in parts]
             entries.append((c, queries))
 
