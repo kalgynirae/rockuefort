@@ -21,31 +21,31 @@ Set-up
 
 3.  Set up a virtual environment and install the required dependencies.
 
-        $ virtualenv3 .
-        $ bin/pip install -r requirements.txt
+        $ virtualenv3 env
+        $ env/bin/pip install -e .
 
-4.  Run Rockuefort using the local Python.
+4.  Run the Rockuefort wrapper script installed in the virtualenv:
 
-        $ bin/python rockuefort.py
+        $ env/bin/rockuefort
 
 Usage
 -----
 
 Index the `/var/music/` directory:
 
-    $ bin/python rockuefort.py index /var/music/
+    $ env/bin/rockuefort index /var/music/
 
 List the files that match the entries in the file `chiptunes`:
 
-    $ bin/python rockuefort.py list chiptunes
+    $ env/bin/rockuefort list chiptunes
 
 Link those files into the `muzic/blerg/` directory:
 
-    $ bin/python rockuefort.py link chiptunes muzic/blerg/
+    $ env/bin/rockuefort link chiptunes muzic/blerg/
 
 Copy those files into the `muzic/wheeeeeeee/` directory:
 
-    $ bin/python rockuefort.py copy chiptunes muzic/wheeeeeeee/
+    $ env/bin/rockuefort copy chiptunes muzic/wheeeeeeee/
 
 What's with the name?
 ---------------------
