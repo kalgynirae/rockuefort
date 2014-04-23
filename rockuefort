@@ -41,7 +41,7 @@ def index(directory):
         attrs = ['title', 'artist', 'album', 'genre']
         songs = []
         for base, dirs, files in os.walk(directory):
-            for file in (path.join(base, f) for f in files):
+            for file in (path.abspath(path.join(base, f)) for f in files):
                 q = mutagen.File(file, easy=True)
                 if q:
                     print(file)
