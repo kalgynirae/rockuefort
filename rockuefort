@@ -69,7 +69,7 @@ def normalize(list_or_string):
     # we join its items together with unicode snowmen and return the result to
     # do substring matching on.
     if isinstance(list_or_string, list):
-        return '☃'.join(map(str.lower, list_or_string))
+        return ''.join('"' + s + '"' for s in map(str.lower, list_or_string))
     else:
         return list_or_string.lower()
 
@@ -102,7 +102,7 @@ if __name__ == '__main__':
     # Load entries
     entries = []
     with open(args['<playlist>']) as f:
-        for line in f:
+        for line_number, line in enumerate(f, start=1):
             try:
                 c, rest = line.strip().split(':', 1)
                 c = int(c)
@@ -111,18 +111,18 @@ if __name__ == '__main__':
                 rest = line.strip()
             parts = rest.lower().split('|')
             queries = [part.split('=') for part in parts]
-            entries.append((c, queries))
+            entries.append((c, queries, line_number))
 
     # Query and build list of files
     files = []
-    for c, queries in entries:
+    for c, queries, line_number in entries:
         matched_files = data
         try:
             for attr, value in queries:
                 matched_files = [x for x in matched_files
                                  if value in normalize(x[attr])]
         except ValueError:
-            log("Badly-formatted entry; skipping")
+            log("Skipping malformed entry on line %s" % line_number)
             continue
 
         matched_files = [x['file'] for x in matched_files]
