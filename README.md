@@ -52,5 +52,4 @@ What's with the name?
 
 Rockuefort is named after [Roquefort cheese].
 
-[Quod Libet]: https://code.google.com/p/quodlibet/
 [Roquefort cheese]: https://en.wikipedia.org/wiki/Roquefort
