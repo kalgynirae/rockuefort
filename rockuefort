@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """
+Rockuefort reads playlists written in simple plaintext, searches your
+music library, and outputs the songs matched by the playlist in a few
+different ways.
+
 Usage: rockuefort index <directory>
        rockuefort list [--null] <playlist>
        rockuefort copy <playlist> <destination>
