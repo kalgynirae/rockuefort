@@ -4,14 +4,15 @@ Rockuefort reads playlists written in simple plaintext, searches your
 music library, and outputs the songs matched by the playlist in a few
 different ways.
 
-Usage: rockuefort index <directory>
+Usage: rockuefort index [--reset] <directory>
        rockuefort list [--null] <playlist>
        rockuefort copy <playlist> <destination>
        rockuefort link <playlist> <destination>
        rockuefort --help
 
 Options:
-    --null  Terminate printed filenames with null characters
+    --null   Terminate printed filenames with null characters
+    --reset  Forget previously indexed files
 """
 import operator
 import os
@@ -23,8 +24,6 @@ import tempfile
 
 from docopt import docopt
 import mutagenx as mutagen
-
-CACHE_FILE = path.expanduser('~/.cache/rockuefort/index')
 
 def ask(question):
     while True:
@@ -44,10 +43,10 @@ def mkdir_if_needed(path):
         else:
             raise
 
-def index(directory):
-    with open(CACHE_FILE, 'wb') as out:
+def index(cache_path, directory, existing_cache=None):
+    with open(cache_path, 'wb') as out:
         attrs = ['title', 'artist', 'album', 'genre']
-        songs = []
+        songs = existing_cache or []
         for base, dirs, files in os.walk(directory):
             for file in (path.abspath(path.join(base, f)) for f in files):
                 q = mutagen.File(file, easy=True)
@@ -81,21 +80,20 @@ def normalize(list_or_string):
     else:
         return list_or_string.lower()
 
+def load_cache(path):
+    with open(path, 'rb') as f:
+        songs = pickle.load(f)
+
+    return songs
+
 if __name__ == '__main__':
     args = docopt(__doc__)
 
-    # Try to load the cache
-    data = None
+    cache_path = path.expanduser('~/.cache/rockuefort/index')
     try:
-        opened = open(CACHE_FILE, 'rb')
+        data = load_cache(cache_path)
     except FileNotFoundError:
-        pass
-    else:
-        with opened as f:
-            try:
-                data = pickle.load(f)
-            except (pickle.UnpicklingError, EOFError):
-                pass
+        data = None
 
     if not data and not args['index']:
         print("Invalid cache. Please `rockuefort index` something first.",
@@ -103,8 +101,8 @@ if __name__ == '__main__':
         sys.exit(1)
 
     if args['index']:
-        mkdir_if_needed(path.dirname(CACHE_FILE))
-        index(args['<directory>'])
+        mkdir_if_needed(path.dirname(cache_path))
+        index(cache_path, args['<directory>'], data)
         sys.exit(0)
 
     # Load entries
