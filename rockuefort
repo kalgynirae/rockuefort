@@ -85,6 +85,8 @@ def normalize(list_or_string):
 def parse_entries(lines):
     entries = []
     for line_number, line in enumerate(lines, start=1):
+        if not line.strip() or line.startswith("#"):
+            continue
         try:
             c, rest = line.strip().split(':', 1)
             c = int(c)
