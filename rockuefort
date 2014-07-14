@@ -120,6 +120,8 @@ if __name__ == '__main__':
 
     if args['index']:
         mkdir_if_needed(path.dirname(cache_path))
+        if args['--reset']:
+            data = []
         index(cache_path, args['<directory>'], data)
         sys.exit(0)
 
