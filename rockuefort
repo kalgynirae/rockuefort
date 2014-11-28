@@ -6,8 +6,8 @@ different ways.
 
 Usage: rockuefort index [--reset] <directory>
        rockuefort list [--null] <playlist>
-       rockuefort copy <playlist> <destination>
-       rockuefort link <playlist> <destination>
+       rockuefort (copy|link) <playlist> <destination>
+       rockuefort render <playlist> <outfile>
        rockuefort --help
 
 Options:
@@ -25,6 +25,7 @@ import tempfile
 from docopt import docopt
 import mutagenx as mutagen
 
+
 def ask(question):
     while True:
         answer = input("{} (Y/n): ".format(question))
@@ -33,6 +34,17 @@ def ask(question):
             return True
         elif answer in "Nn":
             return False
+
+
+def call(args, ignore=False):
+    log(' '.join(args))
+    try:
+        subprocess.check_call(args)
+    except subprocess.CalledProcessError as e:
+        if not ignore:
+            log(e)
+            sys.exit(2)
+
 
 def mkdir_if_needed(path):
     try:
@@ -43,6 +55,7 @@ def mkdir_if_needed(path):
             pass
         else:
             raise
+
 
 def index(cache_path, directory, existing_cache=None):
     with open(cache_path, 'wb') as out:
@@ -58,8 +71,10 @@ def index(cache_path, directory, existing_cache=None):
                     songs.append(song)
         pickle.dump(songs, out)
 
+
 def log(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
+
 
 def make_links(targets, dest_dir):
     digits = len(str(len(targets)))
@@ -71,6 +86,7 @@ def make_links(targets, dest_dir):
         except FileExistsError:
             log("File exists: {}".format(dest))
 
+
 def normalize(list_or_string):
     # We do substring matching on track attributes, but the attributes come
     # from mutagen as lists of strings (except for the 'file' attribute). So,
@@ -81,6 +97,7 @@ def normalize(list_or_string):
         return ''.join('"' + s + '"' for s in map(str.lower, list_or_string))
     else:
         return list_or_string.lower()
+
 
 def parse_entries(lines):
     entries = []
@@ -98,11 +115,50 @@ def parse_entries(lines):
         entries.append((c, queries, line_number))
     return entries
 
+
 def load_cache(path):
     with open(path, 'rb') as f:
         songs = pickle.load(f)
 
     return songs
+
+
+def render(files, outfile):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        processed_files = []
+        # Pre-process each file to compress dynamics and remove silences
+        for file in files:
+            base, _ = path.splitext(path.basename(file))
+            out = path.join(temp_dir, base + '.flac')
+            sox_args = [
+                'sox',
+                '--no-clobber',
+                '--show-progress',
+                '--replay-gain', 'track',
+                file,
+                out,
+                'compand', '0.5,3',
+                    '5:-70,-60,-40,-40,-25,-30,-20,-20,-15,-10,-8,-5,-5',
+                    '-2', '-70', '0.3',
+                'silence', '1', '0.1', '1%',
+                'reverse',
+                'silence', '1', '0.1', '1%',
+                'reverse',
+            ]
+            call(sox_args)
+            processed_files.append(out)
+
+        # Concatenate the files
+        sox_args = [
+            'sox',
+            '--no-clobber',
+            '--show-progress',
+        ]
+        for file in processed_files:
+            sox_args.append(file)
+        sox_args.append(outfile)
+        call(sox_args)
+
 
 if __name__ == '__main__':
     args = docopt(__doc__)
@@ -175,13 +231,13 @@ if __name__ == '__main__':
                           '--copy-links', '--times', '--delete', '--dry-run',
                           temp_dir + '/', dest]
             try:
-                subprocess.check_call(rsync_args)
+                call(rsync_args, ignore=True)
             except subprocess.CalledProcessError:
                 pass
             if ask("Proceed with the rsync?"):
                 rsync_args.remove('--dry-run')
                 try:
-                    subprocess.check_call(rsync_args)
+                    call(rsync_args, ignore=True)
                 except subprocess.CalledProcessError:
                     pass
     elif args['link']:
@@ -191,6 +247,9 @@ if __name__ == '__main__':
         except FileExistsError:
             pass
         make_links(files, dest)
+    elif args['render']:
+        outfile = args['<outfile>']
+        render(files, outfile)
     else:  # args['list']
         for file in files:
             print(file, end=('\0' if args['--null'] else '\n'))
