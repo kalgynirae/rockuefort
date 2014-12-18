@@ -102,14 +102,18 @@ def normalize(list_or_string):
 def parse_entries(lines):
     entries = []
     for line_number, line in enumerate(lines, start=1):
-        if not line.strip() or line.startswith("#"):
+        line = line.strip()
+        if not line or line.startswith("#"):
             continue
+        if line.startswith("+"):
+            # TODO: deal with + (means this track must stay with previous)
+            line = line[1:]
         try:
-            c, rest = line.strip().split(':', 1)
+            c, rest = line.split(':', 1)
             c = int(c)
         except ValueError:
             c = 1
-            rest = line.strip()
+            rest = line
         parts = rest.lower().split('|')
         queries = [part.split('=') for part in parts]
         entries.append((c, queries, line_number))
@@ -140,9 +144,9 @@ def render(files, outfile):
                 'compand', '0.5,3',
                     '5:-70,-60,-40,-40,-25,-30,-20,-20,-15,-10,-8,-5,-5',
                     '-2', '-70', '0.3',
-                'silence', '1', '0.1', '1%',
+                'silence', '1', '0.1', '1%', # remove silence at the beginning
                 'reverse',
-                'silence', '1', '0.1', '1%',
+                'silence', '1', '0.1', '1%', # remove silence at the end
                 'reverse',
             ]
             call(sox_args)

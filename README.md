@@ -47,9 +47,33 @@ Copy those files into the `muzic/wheeeeeeee/` directory:
 
     $ env/bin/rockuefort copy chiptunes muzic/wheeeeeeee/
 
+Playlist format
+---------------
+
+Rockuefort playlists are text files with one query per line. Blank lines and
+lines starting with `#` are ignored. A query takes the following format:
+
+    [O][N:]TAG=VALUE[|TAG=VALUE...]
+
+*   `O`: special option characters (defaults to none)
+*   `N`: the number of files this query is expected to match (defaults to 1)
+*   `TAG`: one of `title`, `artist`, `album`, or `genre`
+*   `VALUE`: a substring of the value to match. It can contain
+    any character except `|`. Matching files will have this as a substring of
+    the real tag value. It can be surrounded with double quotes to perform an
+    exact match (instead of substring).
+
+### Special options
+
+*   `+`: indicates that the query must follow the previous query in the output
+
+### Examples
+
+See [kalgynirae/playlists](https://bitbucket.org/kalgynirae/playlists) for
+examples.
+
 What's with the name?
 ---------------------
 
-Rockuefort is named after [Roquefort cheese].
-
-[Roquefort cheese]: https://en.wikipedia.org/wiki/Roquefort
+Rockuefort is named after [Roquefort
+cheese](https://en.wikipedia.org/wiki/Roquefort).
