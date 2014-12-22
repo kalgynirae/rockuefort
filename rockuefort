@@ -14,7 +14,7 @@ Options:
     --null   Terminate printed filenames with null characters
     --reset  Forget previously indexed files
 """
-import operator
+import math
 import os
 import os.path as path
 import pickle
@@ -131,9 +131,11 @@ def render(files, outfile):
     with tempfile.TemporaryDirectory() as temp_dir:
         processed_files = []
         # Pre-process each file to compress dynamics and remove silences
-        for file in files:
+        max_digits = math.ceil(math.log10(len(files)))
+        for n, file in enumerate(files, start=1):
             base, _ = path.splitext(path.basename(file))
-            out = path.join(temp_dir, base + '.flac')
+            out = path.join(temp_dir, ('{:0%sd}-{}.ogg' % max_digits)
+                                      .format(n, base))
             sox_args = [
                 'sox',
                 '--no-clobber',
