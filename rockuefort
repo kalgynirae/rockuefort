@@ -5,14 +5,16 @@ music library, and outputs the songs matched by the playlist in a few
 different ways.
 
 Usage: rockuefort index [--reset] <directory>
-       rockuefort list [--null] <playlist>
+       rockuefort list [--strip PREFIX] [--prepend PREFIX] [--null] <playlist>
        rockuefort (copy|link) <playlist> <destination>
        rockuefort render <playlist> <outfile>
        rockuefort --help
 
 Options:
-    --null   Terminate printed filenames with null characters
-    --reset  Forget previously indexed files
+    --null              Terminate printed filenames with null characters
+    --prepend PREFIX    Prefix to prepend to each printed filename
+    --reset             Forget previously indexed files
+    --strip PREFIX      Prefix to strip from each filename
 """
 import math
 import os
@@ -258,6 +260,10 @@ if __name__ == '__main__':
         render(files, outfile)
     elif args['list']:
         for file in files:
+            if args['--strip'] and file.startswith(args['--strip']):
+                file = file[len(args['--strip']):]
+            if args['--prepend']:
+                file = args['--prepend'] + file
             print(file, end=('\0' if args['--null'] else '\n'))
     else:
         class DocoptConfidenceError(Exception): pass
