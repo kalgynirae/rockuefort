@@ -143,9 +143,9 @@ def render(files, outfile):
                 '--replay-gain', 'track',
                 file,
                 out,
-                'compand', '0.5,3',
-                    '5:-70,-60,-40,-40,-25,-30,-20,-20,-15,-10,-8,-5,-5',
-                    '-2', '-70', '0.3',
+                #'compand', '0.5,3',
+                #    '5:-70,-60,-40,-40,-25,-30,-20,-20,-15,-10,-8,-5,-5',
+                #    '-2', '-70', '0.3',
                 'silence', '1', '0.1', '1%', # remove silence at the beginning
                 'reverse',
                 'silence', '1', '0.1', '1%', # remove silence at the end
