@@ -1,4 +1,4 @@
-rockuefort
+Rockuefort
 ==========
 
 **Rockuefort** "compiles" your playlists. It indexes your music
@@ -9,8 +9,8 @@ Rockuefort can build your playlist and copy or link the songs into a
 destination directory. It uses `rsync` to copy so that only new or
 changed files need to be copied.
 
-Set-up
-------
+Quick set-up
+------------
 
 1.  Install `rsync` if you want to use the `copy` mode.
 
@@ -47,30 +47,42 @@ Copy those files into the `muzic/wheeeeeeee/` directory:
 
     $ env/bin/rockuefort copy chiptunes muzic/wheeeeeeee/
 
+Play the playlist with VLC:
+
+    $ env/bin/rockuefort list chiptunes | xargs -d '\n' vlc
+
+Queue songs using `mpc`:
+
+    $ env/bin/rockuefort list --strip '/var/music/' chiptunes | mpc add
+
 Playlist format
 ---------------
 
-Rockuefort playlists are text files with one query per line. Blank lines and
-lines starting with `#` are ignored. A query takes the following format:
+Rockuefort playlists are text files with one query per line. Blank lines
+and lines starting with `#` are ignored.
+
+A query takes the following format:
 
     [O][N:]TAG=VALUE[|TAG=VALUE...]
 
-*   `O`: special option characters (defaults to none)
-*   `N`: the number of files this query is expected to match (defaults to 1)
+*   `O`: zero or more special option characters (defaults to nothing)
+*   `N`: the number of files this query is expected to match (defaults
+    to `1`)
 *   `TAG`: one of `title`, `artist`, `album`, or `genre`
-*   `VALUE`: a substring of the value to match. It can contain
-    any character except `|`. Matching files will have this as a substring of
-    the real tag value. It can be surrounded with double quotes to perform an
-    exact match (instead of substring).
+*   `VALUE`: a substring of the value to match. It can contain any
+    character except `|`. Matching files will have this as a substring
+    of the real tag value. It can be surrounded with double quotes to
+    perform an exact match (instead of substring).
 
 ### Special options
 
-*   `+`: indicates that the query must follow the previous query in the output
+*   `+`: this query must always follow the previous query in the output
+    (important for Rockuefort's future `--shuffle` option)
 
-### Examples
+### Example playlists
 
-See [kalgynirae/playlists](https://bitbucket.org/kalgynirae/playlists) for
-examples.
+*   [kalgynirae/playlists/bedtime](https://bitbucket.org/kalgynirae/playlists/src/f25098b617df69227113b4a76050c84e95d348d9/bedtime?at=master)
+*   [kalgynirae/playlists/chiptune](https://bitbucket.org/kalgynirae/playlists/src/f25098b617df69227113b4a76050c84e95d348d9/chiptune?at=master)
 
 What's with the name?
 ---------------------
