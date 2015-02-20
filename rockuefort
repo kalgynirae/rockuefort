@@ -161,14 +161,6 @@ class CacheEntry(namedtuple("CacheEntry", ["file"] + TAGS)):
             raise UnknownFileFormatError(path)
 
 
-class QueryParseError(Exception):
-    pass
-
-
-class QueryInvalidTagError(Exception):
-    pass
-
-
 class PlaylistEntry(namedtuple("PlaylistEntry", "query count options")):
     _matcher = re.compile(
         r"""(?P<options>[^\w]+)?
@@ -192,6 +184,14 @@ class PlaylistEntry(namedtuple("PlaylistEntry", "query count options")):
             return cls(query, count, options)
         else:
             raise QueryParseError
+
+
+class QueryInvalidTagError(Exception):
+    pass
+
+
+class QueryParseError(Exception):
+    pass
 
 
 class UnknownFileFormatError(Exception):
