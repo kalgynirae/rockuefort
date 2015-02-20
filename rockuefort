@@ -9,96 +9,284 @@ Usage: rockuefort index [--reset] <directory>
        rockuefort (copy|link) <playlist> <destination>
        rockuefort render <playlist> <outfile>
        rockuefort --help
+       rockuefort --version
 
 Options:
-    --null              Terminate printed filenames with null characters
-    --prepend PREFIX    Prefix to prepend to each printed filename
-    --reset             Forget previously indexed files
-    --strip PREFIX      Prefix to strip from each filename
+  --null            Terminate printed filenames with null characters
+  --prepend PREFIX  Prepend PREFIX to each printed filename
+  --reset           Forget previously indexed files
+  --strip PREFIX    Strip PREFIX from each printed filename
 """
+from collections import namedtuple
+import logging
 import math
 import os
-import os.path as path
 import pickle
+import re
 import subprocess
 import sys
 import tempfile
 
 from docopt import docopt
-import mutagenx as mutagen
+import mutagen
+
+logger = logging.getLogger("rockuefort")
+
+ACTIONS = "index list copy link render".split()
+CACHE_PATH = os.path.expanduser("~/.cache/rockuefort/index")
+PREFERRED_EXTENSIONS = ".oga .ogg .mp3 .flac".split()
+TAGS = "title artist album genre composer".split()
 
 
-def ask(question):
+def main():
+    root_logger = logging.getLogger()
+    formatter = logging.Formatter("%(name)s:%(levelname)s: %(message)s")
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    root_logger.addHandler(handler)
+    root_logger.setLevel(logging.DEBUG)
+
+    args = docopt(__doc__, version="Rockuefort 1.0")
+    action = next(action for action in ACTIONS if args[action])
+    func = globals()["action_%s" % action]
+    return func(args)
+
+
+def action_copy(args):
+    files = load_playlist(args["<playlist>"])
+    with tempfile.TemporaryDirectory() as temp_dir:
+        make_links(files, temp_dir)
+        logger.info("Performing a dry run of rsync...")
+        rsync_args = ["rsync", "--recursive", "--itemize-changes",
+                      "--copy-links", "--times", "--delete", "--dry-run",
+                      temp_dir + "/", args["<destination>"]]
+        call(rsync_args, ignore_return_code=True)
+        if confirm("Proceed with the rsync?"):
+            rsync_args.remove("--dry-run")
+            call(rsync_args, ignore_return_code=True)
+
+
+def action_index(args):
+    if args["--reset"]:
+        mutable_cache = []
+    else:
+        mutable_cache = list(load_cache(CACHE_PATH))
+    # Open the cache file *before* scanning so that we haven't wasted time
+    # scanning if we find out the cache file can't be opened.
+    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+    with open(CACHE_PATH, "wb") as out:
+        for base, _, files in os.walk(args["<directory>"]):
+            paths = (os.path.join(base, f) for f in files)
+            for path in paths:
+                logger.info(path)
+                try:
+                    entry = CacheEntry.from_path(path)
+                except UnknownFileFormatError:
+                    logger.debug("skipping: %s", path)
+                else:
+                    mutable_cache.append(entry)
+        cache = tuple(mutable_cache)
+        pickle.dump(cache, out)
+
+
+def action_link(args):
+    files = load_playlist(args["<playlist>"])
+    try:
+        os.mkdir(args["<destination>"])
+    except FileExistsError:
+        pass
+    make_links(files, args["<destination>"])
+
+
+def action_list(args):
+    files = load_playlist(args["<playlist>"])
+    for file in files:
+        if args["--strip"] and file.startswith(args["--strip"]):
+            file = file[len(args["--strip"]):]
+        if args["--prepend"]:
+            file = args["--prepend"] + file
+        print(file, end=("\0" if args["--null"] else "\n"))
+
+
+def action_render(args):
+    files = load_playlist(args["<playlist>"])
+    with tempfile.TemporaryDirectory() as temp_dir:
+        processed_files = []
+        # Pre-process each file to compress dynamics and remove silences
+        max_digits = math.ceil(math.log10(len(files)))
+        for n, file in enumerate(files, start=1):
+            base, _ = os.path.splitext(os.path.basename(file))
+            out = os.path.join(temp_dir, ("{:0%sd}-{}.ogg" % max_digits)
+                                         .format(n, base))
+            sox_args = [
+                "sox",
+                "--no-clobber",
+                "--show-progress",
+                "--replay-gain", "track",
+                file,
+                out,
+                #"compand", "0.5,3",
+                #    "5:-70,-60,-40,-40,-25,-30,-20,-20,-15,-10,-8,-5,-5",
+                #    "-2", "-70", "0.3",
+                "silence", "1", "0.1", "1%", # remove silence at the beginning
+                "reverse",
+                "silence", "1", "0.1", "1%", # remove silence at the end
+                "reverse",
+            ]
+            call(sox_args)
+            processed_files.append(out)
+
+        # Concatenate the files
+        sox_args = [
+            "sox",
+            "--no-clobber",
+            "--show-progress",
+        ]
+        for file in processed_files:
+            sox_args.append(file)
+        sox_args.append(args["<outfile>"])
+        call(sox_args)
+
+
+class CacheEntry(namedtuple("CacheEntry", ["file"] + TAGS)):
+    @classmethod
+    def from_path(cls, path):
+        mf = mutagen.File(path, easy=True)
+        if mf:
+            abspath = os.path.abspath(path)
+            info = {tag: mf.get(tag, []) for tag in TAGS}
+            info["file"] = abspath
+            return cls(**info)
+        else:
+            raise UnknownFileFormatError(path)
+
+
+class QueryParseError(Exception):
+    pass
+
+
+class QueryInvalidTagError(Exception):
+    pass
+
+
+class PlaylistEntry(namedtuple("PlaylistEntry", "query count options")):
+    _matcher = re.compile(
+        r"""(?P<options>[^\w]+)?
+            (?:(?P<count>[\d]+):)?
+            (?P<query>
+                [\w]+=[^|]+
+                (?:\|[\w]+=[^|]+)*
+            )""",
+        re.VERBOSE).fullmatch
+
+    @classmethod
+    def from_string(cls, string):
+        match = cls._matcher(string)
+        if match:
+            query_str, count, options = match.group("query", "count", "options")
+            count = int(count) if count is not None else 1
+            query_parts = query_str.split("|")
+            query = [part.split("=", maxsplit=1) for part in query_parts]
+            if not all(tag in TAGS for tag, _ in query):
+                raise QueryInvalidTagError
+            return cls(query, count, options)
+        else:
+            raise QueryParseError
+
+
+class UnknownFileFormatError(Exception):
+    pass
+
+
+def call(args, ignore_return_code=False):
+    logger.info(" ".join(args))
+    try:
+        subprocess.check_call(args)
+    except subprocess.CalledProcessError as e:
+        if not ignore_return_code:
+            logger.error(e)
+            sys.exit(2)
+
+
+def confirm(question):
     while True:
         answer = input("{} (Y/n): ".format(question))
         if answer in "Yy":
-            # Note that this wins if answer is empty
+            # Note that this branch also wins when answer is empty
             return True
         elif answer in "Nn":
             return False
 
 
-def call(args, ignore=False):
-    log(' '.join(args))
+def filter_extensions(files):
+    extensions = {}
+    for file in files:
+        base, ext = os.path.splitext(file)
+        extensions.setdefault(base, []).append(ext)
+    deduped = []
+    for base, exts in extensions.items():
+        ext = next((e for e in PREFERRED_EXTENSIONS if e in exts), exts[0])
+        deduped.append(base + ext)
+    return deduped
+
+
+def get_files(entries, cache=None):
+    files = []
+    for entry in entries:
+        matched_files = filter_extensions(match_files(entry.query, cache))
+        n = len(matched_files)
+        if n != entry.count:
+            file_info = "".join("\n  match: %s" % f for f in matched_files)
+            logger.warn("Matched %s files (expected %s): %r%s",
+                        n, entry.count, entry.query, file_info)
+        for file in matched_files:
+            files.append(file)
+    return files
+
+
+def load_cache(path):
     try:
-        subprocess.check_call(args)
-    except subprocess.CalledProcessError as e:
-        if not ignore:
-            log(e)
-            sys.exit(2)
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    except FileNotFoundError:
+        logger.warn("No cache file found. You should 'rockuefort index' something.")
+        return Cache()
 
 
-def mkdir_if_needed(path):
-    try:
-        os.makedirs(path, exist_ok=True)
-    except FileExistsError as e:
-        if e.errno == 17:
-            # 17 means the permissions are abnormal, but we don't care
-            pass
-        else:
-            raise
-
-
-def index(cache_path, directory, existing_cache=None):
-    with open(cache_path, 'wb') as out:
-        attrs = ['title', 'artist', 'album', 'genre']
-        songs = existing_cache or []
-        for base, dirs, files in os.walk(directory):
-            for file in (path.abspath(path.join(base, f)) for f in files):
-                q = mutagen.File(file, easy=True)
-                if q:
-                    print(file)
-                    song = {attr: q.get(attr, []) for attr in attrs}
-                    song['file'] = file
-                    songs.append(song)
-        pickle.dump(songs, out)
-
-
-def log(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+def load_playlist(path):
+    cache = load_cache(CACHE_PATH)
+    with open(path) as f:
+        entries = parse_entries(f)
+    return get_files(entries, cache)
 
 
 def make_links(targets, dest_dir):
     digits = len(str(len(targets)))
     for i, target in enumerate(targets, 1):
-        basename = ("{:0%d}-{}" % digits).format(i, path.basename(target))
-        dest = path.join(dest_dir, basename)
+        basename = ("{:0%d}-{}" % digits).format(i, os.path.basename(target))
+        dest = os.path.join(dest_dir, basename)
         try:
             os.symlink(target, dest)
         except FileExistsError:
-            log("File exists: {}".format(dest))
+            logger.warn("File exists: %s", dest)
 
 
-def normalize(list_or_string):
+def match_files(query, cache):
+    matched_files = cache
+    for attr, value in query:
+        matched_files = [x for x in matched_files
+                           if matches(value, getattr(x, attr))]
+    return [x.file for x in matched_files]
+
+
+def matches(value, attr_list):
     # We do substring matching on track attributes, but the attributes come
-    # from mutagen as lists of strings (except for the 'file' attribute). So,
+    # from mutagen as lists of strings (except for the "file" attribute). So,
     # when given a list we join its items together (surrounding each with
     # quotes so fake full-string matching is possible) and return the result to
     # do substring matching on.
-    if isinstance(list_or_string, list):
-        return ''.join('"' + s + '"' for s in map(str.lower, list_or_string))
-    else:
-        return list_or_string.lower()
+    combined_attr_values = "".join('"%s"' % s for s in attr_list).lower()
+    return value.lower() in combined_attr_values
 
 
 def parse_entries(lines):
@@ -107,164 +295,18 @@ def parse_entries(lines):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        if line.startswith("+"):
-            # TODO: deal with + (means this track must stay with previous)
-            line = line[1:]
         try:
-            c, rest = line.split(':', 1)
-            c = int(c)
-        except ValueError:
-            c = 1
-            rest = line
-        parts = rest.lower().split('|')
-        queries = [part.split('=') for part in parts]
-        entries.append((c, queries, line_number))
+            entry = PlaylistEntry.from_string(line)
+        except QueryInvalidTagError:
+            logger.warn("Ignoring query using invalid tag [line %s]: %r",
+                        line_number, line)
+        except QueryParseError:
+            logger.warn("Ignoring invalid query [line %s]: %r",
+                        line_number, line)
+        else:
+            entries.append(entry)
     return entries
 
 
-def load_cache(path):
-    with open(path, 'rb') as f:
-        songs = pickle.load(f)
-
-    return songs
-
-
-def render(files, outfile):
-    with tempfile.TemporaryDirectory() as temp_dir:
-        processed_files = []
-        # Pre-process each file to compress dynamics and remove silences
-        max_digits = math.ceil(math.log10(len(files)))
-        for n, file in enumerate(files, start=1):
-            base, _ = path.splitext(path.basename(file))
-            out = path.join(temp_dir, ('{:0%sd}-{}.ogg' % max_digits)
-                                      .format(n, base))
-            sox_args = [
-                'sox',
-                '--no-clobber',
-                '--show-progress',
-                '--replay-gain', 'track',
-                file,
-                out,
-                #'compand', '0.5,3',
-                #    '5:-70,-60,-40,-40,-25,-30,-20,-20,-15,-10,-8,-5,-5',
-                #    '-2', '-70', '0.3',
-                'silence', '1', '0.1', '1%', # remove silence at the beginning
-                'reverse',
-                'silence', '1', '0.1', '1%', # remove silence at the end
-                'reverse',
-            ]
-            call(sox_args)
-            processed_files.append(out)
-
-        # Concatenate the files
-        sox_args = [
-            'sox',
-            '--no-clobber',
-            '--show-progress',
-        ]
-        for file in processed_files:
-            sox_args.append(file)
-        sox_args.append(outfile)
-        call(sox_args)
-
-
-if __name__ == '__main__':
-    args = docopt(__doc__)
-
-    cache_path = path.expanduser('~/.cache/rockuefort/index')
-    try:
-        data = load_cache(cache_path)
-    except FileNotFoundError:
-        data = None
-
-    if not data and not args['index']:
-        print("Invalid cache. Please `rockuefort index` something first.",
-              file=sys.stderr)
-        sys.exit(1)
-
-    if args['index']:
-        mkdir_if_needed(path.dirname(cache_path))
-        if args['--reset']:
-            data = []
-        index(cache_path, args['<directory>'], data)
-        sys.exit(0)
-
-    # Load entries
-    with open(args['<playlist>']) as f:
-        entries = parse_entries(f)
-
-    # Query and build list of files
-    files = []
-    for c, queries, line_number in entries:
-        matched_files = data
-        try:
-            for attr, value in queries:
-                matched_files = [x for x in matched_files
-                                 if value in normalize(x[attr])]
-        except ValueError:
-            log("Skipping malformed entry on line %s" % line_number)
-            continue
-
-        matched_files = [x['file'] for x in matched_files]
-
-        # De-duplicate by preferring .ogg, .mp3 versions of songs
-        matched_files_exts = {}
-        for file in matched_files:
-            base, ext = path.splitext(file)
-            matched_files_exts.setdefault(base, []).append(ext)
-        matched_files_deduped = []
-        for base, exts in matched_files_exts.items():
-            try:
-                ext = next(e for e in ['.ogg', '.mp3'] if e in exts)
-            except StopIteration:
-                ext = exts[0]
-            matched_files_deduped.append(base + ext)
-
-        # Check whether the query matched the expected number of files
-        nm = len(matched_files_deduped)
-        if nm != c:
-            log("Matched {} (expected {}): {}".format(nm, c, queries))
-            for file in matched_files_deduped:
-                log("  match: {}".format(file))
-        for file in matched_files_deduped:
-            files.append(file)
-
-    # Perform the requested action
-    if args['copy']:
-        dest = args['<destination>']
-        with tempfile.TemporaryDirectory() as temp_dir:
-            make_links(files, temp_dir)
-            log("Performing a dry run of rsync...")
-            rsync_args = ['rsync', '--recursive', '--itemize-changes',
-                          '--copy-links', '--times', '--delete', '--dry-run',
-                          temp_dir + '/', dest]
-            try:
-                call(rsync_args, ignore=True)
-            except subprocess.CalledProcessError:
-                pass
-            if ask("Proceed with the rsync?"):
-                rsync_args.remove('--dry-run')
-                try:
-                    call(rsync_args, ignore=True)
-                except subprocess.CalledProcessError:
-                    pass
-    elif args['link']:
-        dest = args['<destination>']
-        try:
-            os.mkdir(dest)
-        except FileExistsError:
-            pass
-        make_links(files, dest)
-    elif args['render']:
-        outfile = args['<outfile>']
-        render(files, outfile)
-    elif args['list']:
-        for file in files:
-            if args['--strip'] and file.startswith(args['--strip']):
-                file = file[len(args['--strip']):]
-            if args['--prepend']:
-                file = args['--prepend'] + file
-            print(file, end=('\0' if args['--null'] else '\n'))
-    else:
-        class DocoptConfidenceError(Exception): pass
-        raise DocoptConfidenceError("Docopt, you've failed us!")
+if __name__ == "__main__":
+    sys.exit(main())
