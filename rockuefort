@@ -53,9 +53,7 @@ def main():
 
 
 def action_copy(args):
-    cache = load_cache(CACHE_PATH)
-    entries = load_playlist(args["<playlist>"])
-    files = get_files(entries, cache)
+    files = load_playlist(args["<playlist>"])
     with tempfile.TemporaryDirectory() as temp_dir:
         make_links(files, temp_dir)
         logger.info("Performing a dry run of rsync...")
@@ -92,9 +90,7 @@ def action_index(args):
 
 
 def action_link(args):
-    cache = load_cache(CACHE_PATH)
-    entries = load_playlist(args["<playlist>"])
-    files = get_files(entries, cache)
+    files = load_playlist(args["<playlist>"])
     try:
         os.mkdir(args["<destination>"])
     except FileExistsError:
@@ -103,9 +99,7 @@ def action_link(args):
 
 
 def action_list(args):
-    cache = load_cache(CACHE_PATH)
-    entries = load_playlist(args["<playlist>"])
-    files = get_files(entries, cache)
+    files = load_playlist(args["<playlist>"])
     for file in files:
         if args["--strip"] and file.startswith(args["--strip"]):
             file = file[len(args["--strip"]):]
@@ -115,9 +109,7 @@ def action_list(args):
 
 
 def action_render(args):
-    cache = load_cache(CACHE_PATH)
-    entries = load_playlist(args["<playlist>"])
-    files = get_files(entries, cache)
+    files = load_playlist(args["<playlist>"])
     with tempfile.TemporaryDirectory() as temp_dir:
         processed_files = []
         # Pre-process each file to compress dynamics and remove silences
@@ -262,8 +254,10 @@ def load_cache(path):
 
 
 def load_playlist(path):
+    cache = load_cache(CACHE_PATH)
     with open(path) as f:
-        return parse_entries(f)
+        entries = parse_entries(f)
+    return get_files(entries, cache)
 
 
 def make_links(targets, dest_dir):
