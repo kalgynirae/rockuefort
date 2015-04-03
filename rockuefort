@@ -6,7 +6,7 @@ different ways.
 
 Usage: rockuefort index [--reset] <directory>
        rockuefort list [--strip PREFIX] [--prepend PREFIX] [--null] <playlist>
-       rockuefort (copy|link) <playlist> <destination>
+       rockuefort (copy|link) [--no-number] <playlist> <destination>
        rockuefort render <playlist> <outfile>
        rockuefort --help
        rockuefort --version
@@ -55,7 +55,7 @@ def main():
 def action_copy(args):
     files = load_playlist(args["<playlist>"])
     with tempfile.TemporaryDirectory() as temp_dir:
-        make_links(files, temp_dir)
+        make_links(files, temp_dir, args["--no-number"])
         logger.info("Performing a dry run of rsync...")
         rsync_args = ["rsync", "--recursive", "--itemize-changes",
                       "--copy-links", "--times", "--delete", "--dry-run",
@@ -95,7 +95,7 @@ def action_link(args):
         os.mkdir(args["<destination>"])
     except FileExistsError:
         pass
-    make_links(files, args["<destination>"])
+    make_links(files, args["<destination>"], args["--no-number"])
 
 
 def action_list(args):
@@ -260,10 +260,12 @@ def load_playlist(path):
     return get_files(entries, cache)
 
 
-def make_links(targets, dest_dir):
+def make_links(targets, dest_dir, no_number=False):
     digits = len(str(len(targets)))
     for i, target in enumerate(targets, 1):
-        basename = ("{:0%d}-{}" % digits).format(i, os.path.basename(target))
+        basename = os.path.basename(target)
+        if not no_number:
+            basename = ("{:0%d}-{}" % digits).format(i, basename)
         dest = os.path.join(dest_dir, basename)
         try:
             os.symlink(target, dest)
