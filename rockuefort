@@ -282,11 +282,15 @@ def match_files(query, cache):
 
 
 def matches(value, attr_list):
-    # We do substring matching on track attributes, but the attributes come
-    # from mutagen as lists of strings (except for the "file" attribute). So,
-    # when given a list we join its items together (surrounding each with
-    # quotes so fake full-string matching is possible) and return the result to
-    # do substring matching on.
+    """Return whether value matches the attribute described by attr_list
+
+    Attributes come from mutagen as lists of strings (except for the "file"
+    attribute). We want to be able to look for both full matches and substring
+    matches, so we surround each string with double quotes and then join them
+    togehter. Then, if value is surrounded by double quotes, it will
+    effectively only match for full string matches; otherwise, it will match
+    substrings.
+    """
     combined_attr_values = "".join('"%s"' % s for s in attr_list).lower()
     return value.lower() in combined_attr_values
 
