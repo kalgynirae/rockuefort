@@ -76,10 +76,10 @@ A query takes the following format:
     of the real tag value. It can be surrounded with double quotes to
     perform an exact match (instead of substring).
 
-### Special options
+### Special options for queries
 
-*   `+`: this query must always follow the previous query in the output
-    (important for Rockuefort's future `--shuffle` option)
+*   `|`: consecutive queries with this option must always stay in order in the
+    output (makes a difference with the `--shuffle` option)
 
 ### Example playlists
 
