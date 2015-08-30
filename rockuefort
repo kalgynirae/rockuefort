@@ -4,16 +4,19 @@ Rockuefort reads playlists written in simple plaintext, searches your
 music library, and outputs the songs matched by the playlist in a few
 different ways.
 
-Usage: rockuefort index [--reset] <directory>
+Usage: rockuefort index [--add DIR|--remove DIR]
        rockuefort list [--strip PREFIX] [--prepend PREFIX] [--null] <playlist>
        rockuefort (copy|link) [--no-number] <playlist> <destination>
        rockuefort render <playlist> <outfile>
+       rockuefort scan
        rockuefort --help
        rockuefort --version
 
 Options:
+  --add DIR         Add DIR to the list of directories to scan
   --null            Terminate printed filenames with null characters
   --prepend PREFIX  Prepend PREFIX to each printed filename
+  --remove DIR      Remove DIR from the list of directories to scan
   --reset           Forget previously indexed files
   --strip PREFIX    Strip PREFIX from each printed filename
 """
@@ -32,8 +35,9 @@ import mutagen
 
 logger = logging.getLogger("rockuefort")
 
-ACTIONS = "index list copy link render".split()
+ACTIONS = "index list copy link render scan".split()
 CACHE_PATH = os.path.expanduser("~/.cache/rockuefort/index")
+DIRS_CONFIG_PATH = os.path.expanduser("~/.config/rockuefort/dirs")
 PREFERRED_EXTENSIONS = ".oga .ogg .mp3 .flac".split()
 TAGS = "title artist album genre composer".split()
 
@@ -67,26 +71,19 @@ def action_copy(args):
 
 
 def action_index(args):
-    if args["--reset"]:
-        mutable_cache = []
+    dirs = load_dirs_config(DIRS_CONFIG_PATH)
+    if args["--add"]:
+        dirs.add(args["--add"])
+    elif args["--remove"]:
+        dirs.remove(args["--remove"])
     else:
-        mutable_cache = list(load_cache(CACHE_PATH))
-    # Open the cache file *before* scanning so that we haven't wasted time
-    # scanning if we find out the cache file can't be opened.
-    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
-    with open(CACHE_PATH, "wb") as out:
-        for base, _, files in os.walk(args["<directory>"]):
-            paths = (os.path.join(base, f) for f in files)
-            for path in paths:
-                logger.info(path)
-                try:
-                    entry = CacheEntry.from_path(path)
-                except UnknownFileFormatError:
-                    logger.debug("skipping: %s", path)
-                else:
-                    mutable_cache.append(entry)
-        cache = tuple(mutable_cache)
-        pickle.dump(cache, out)
+        for dir in dirs:
+            print(dir)
+        return
+
+    os.makedirs(os.path.dirname(DIRS_CONFIG_PATH), exist_ok=True)
+    with open(DIRS_CONFIG_PATH, "w") as f:
+        f.write("\n".join(dirs) + "\n")
 
 
 def action_link(args):
@@ -148,14 +145,35 @@ def action_render(args):
         call(sox_args)
 
 
-class CacheEntry(namedtuple("CacheEntry", ["file"] + TAGS)):
+def action_scan(args):
+    mutable_cache = {}
+    # Open the cache file *before* scanning so that we haven't wasted time
+    # scanning if we find out the cache file can't be opened.
+    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+    with open(CACHE_PATH, "wb") as out:
+        for dir in load_dirs_config(DIRS_CONFIG_PATH):
+            for base, _, files in os.walk(dir):
+                paths = (os.path.join(base, f) for f in files)
+                for path in paths:
+                    logger.info(path)
+                    try:
+                        entry = CacheEntry.from_path(path)
+                    except UnknownFileFormatError:
+                        logger.debug("skipping: %s", path)
+                    else:
+                        mutable_cache[path] = entry
+        cache = tuple(mutable_cache.values())
+        pickle.dump(cache, out)
+
+
+class CacheEntry(namedtuple("CacheEntry", ["path"] + TAGS)):
     @classmethod
     def from_path(cls, path):
         mf = mutagen.File(path, easy=True)
         if mf:
             abspath = os.path.abspath(path)
             info = {tag: mf.get(tag, []) for tag in TAGS}
-            info["file"] = abspath
+            info["path"] = abspath
             return cls(**info)
         else:
             raise UnknownFileFormatError(path)
@@ -239,8 +257,7 @@ def get_files(entries, cache=None):
             file_info = "".join("\n  match: %s" % f for f in matched_files)
             logger.warn("Matched %s files (expected %s): %r%s",
                         n, entry.count, entry.query, file_info)
-        for file in matched_files:
-            files.append(file)
+        files.extend(matched_files)
     return files
 
 
@@ -249,9 +266,17 @@ def load_cache(path):
         with open(path, "rb") as f:
             return pickle.load(f)
     except FileNotFoundError:
-        logger.warn("No cache file found. You should 'rockuefort index' something.")
+        logger.warn("No cache file found. You should run `rockuefort scan`.")
         return Cache()
 
+
+def load_dirs_config(path):
+    try:
+        with open(path) as f:
+            return set(f.read().splitlines())
+    except FileNotFoundError:
+        logger.warn("No dirs config file found.")
+        return set()
 
 def load_playlist(path):
     cache = load_cache(CACHE_PATH)
@@ -278,13 +303,13 @@ def match_files(query, cache):
     for attr, value in query:
         matched_files = [x for x in matched_files
                            if matches(value, getattr(x, attr))]
-    return [x.file for x in matched_files]
+    return [x.path for x in matched_files]
 
 
 def matches(value, attr_list):
     """Return whether value matches the attribute described by attr_list
 
-    Attributes come from mutagen as lists of strings (except for the "file"
+    Attributes come from mutagen as lists of strings (except for the "path"
     attribute). We want to be able to look for both full matches and substring
     matches, so we surround each string with double quotes and then join them
     togehter. Then, if value is surrounded by double quotes, it will
