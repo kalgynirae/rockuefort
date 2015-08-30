@@ -56,7 +56,7 @@ def main():
     root_logger.addHandler(handler)
     root_logger.setLevel(logging.DEBUG)
 
-    args = docopt(__doc__, version="Rockuefort 1.0")
+    args = docopt(__doc__, version="Rockuefort 1.1")
     action = next(action for action in ACTIONS if args[action])
     func = globals()["action_%s" % action]
     return func(args)
