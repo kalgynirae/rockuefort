@@ -21,7 +21,7 @@ Quick set-up
 
 3.  Set up a virtual environment and install the required dependencies.
 
-        $ virtualenv3 env
+        $ python3 -m venv env
         $ env/bin/pip install -e .
 
 4.  Run the Rockuefort wrapper script installed in the virtualenv:
