@@ -24,36 +24,38 @@ Quick set-up
         $ python3 -m venv env
         $ env/bin/pip install -e .
 
-4.  Run the Rockuefort wrapper script installed in the virtualenv:
+4.  Put the installed Rockuefort script on your path.
 
-        $ env/bin/rockuefort
+        # Assuming ~/bin is in your $PATH
+        $ ln -s --relative env/bin/rockuefort ~/bin/rockuefort
 
 Usage
 -----
 
-Index the `/var/music/` directory:
+Scan the `/var/music` directory:
 
-    $ env/bin/rockuefort index /var/music/
+    $ rockuefort index --add /var/music
+    $ rockuefort scan
 
 List the files that match the entries in the file `chiptunes`:
 
-    $ env/bin/rockuefort list chiptunes
+    $ rockuefort list chiptunes
 
 Link those files into the `muzic/blerg/` directory:
 
-    $ env/bin/rockuefort link chiptunes muzic/blerg/
+    $ rockuefort link chiptunes muzic/blerg/
 
 Copy those files into the `muzic/wheeeeeeee/` directory:
 
-    $ env/bin/rockuefort copy chiptunes muzic/wheeeeeeee/
+    $ rockuefort copy chiptunes muzic/wheeeeeeee/
 
 Play the playlist with VLC:
 
-    $ env/bin/rockuefort list chiptunes | xargs -d '\n' vlc
+    $ rockuefort list chiptunes | xargs -d '\n' vlc
 
-Queue songs using `mpc`:
+Queue songs using `mpc` (`mpc` only likes relative paths):
 
-    $ env/bin/rockuefort list --strip '/var/music/' chiptunes | mpc add
+    $ rockuefort list --strip '/var/music/' chiptunes | mpc add
 
 Playlist format
 ---------------
