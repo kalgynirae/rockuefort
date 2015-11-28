@@ -135,9 +135,9 @@ def action_render(args):
             ] + volume_options + [
                 file,
                 out,
-                "silence", "1", "0.1", "1%", # remove silence at the beginning
+                "silence", "1", "0.05", "0.1%", # remove silence at the beginning
                 "reverse",
-                "silence", "1", "0.1", "1%", # remove silence at the end
+                "silence", "1", "0.05", "0.2%", # remove silence at the end
                 "reverse",
             ]
             call(sox_args)
