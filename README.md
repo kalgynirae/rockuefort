@@ -78,8 +78,10 @@ A query takes the following format:
 
 ### Special options for queries
 
-*   `|`: consecutive queries with this option will be treated as a single unit
-    when reordering tracks (e.g., with the `--shuffle` option)
+*   `@`: **fixed position:** this query will not move when reordering tracks
+    (e.g., with the `--shuffle` option)
+*   `|`: **grouped:** consecutive queries with this option will be treated as a
+    single unit when reordering tracks
 
 ### Example playlists
 

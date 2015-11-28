@@ -43,6 +43,7 @@ logger = logging.getLogger("rockuefort")
 ACTIONS = "index list copy link render scan".split()
 CACHE_PATH = os.path.expanduser("~/.cache/rockuefort/index")
 DIRS_CONFIG_PATH = os.path.expanduser("~/.config/rockuefort/dirs")
+KNOWN_OPTIONS = "@|"
 PLAYLIST_LOAD_ARGS = "shuffle".split()
 PREFERRED_EXTENSIONS = ".oga .ogg .mp3 .flac".split()
 TAGS = "title artist album genre composer".split()
@@ -191,6 +192,7 @@ class MatchResult(list):
             super().__init__(file_or_list)
         else:
             super().__init__([file_or_list])
+        self.fixed_position = False
 
 class GroupedMatchResult(MatchResult):
     pass
@@ -217,6 +219,10 @@ class PlaylistEntry(namedtuple("PlaylistEntry", "query count options")):
             if not all(tag in TAGS for tag, _ in query):
                 raise QueryInvalidTagError
             options = options or ''
+            unknown_options = set(options) - set(KNOWN_OPTIONS)
+            if unknown_options:
+                logger.warn("Ignoring unknown query options %r",
+                            "".join(unknown_options))
             return cls(query, count, options)
         else:
             raise QueryParseError
@@ -291,6 +297,8 @@ def get_results(entries, cache=None):
                 results.append(GroupedMatchResult(matched_files))
         else:
             results.extend(MatchResult(file) for file in matched_files)
+        if '@' in entry.options:
+            results[-1].fixed_position = True
     return results
 
 
@@ -318,8 +326,8 @@ def load_playlist(path, *, shuffle=False):
         entries = parse_entries(f)
     results = get_results(entries, cache)
     if shuffle:
-        random.shuffle(results)
-    return itertools.chain(*results)
+        results = shuffled(results)
+    return list(itertools.chain(*results))
 
 
 def make_links(targets, dest_dir, no_number=False):
@@ -374,6 +382,20 @@ def parse_entries(lines):
         else:
             entries.append(entry)
     return entries
+
+
+def shuffled(results):
+    fixed = []
+    non_fixed = []
+    for position, result in enumerate(results):
+        if result.fixed_position:
+            fixed.append((position, result))
+        else:
+            non_fixed.append(result)
+    random.shuffle(non_fixed)
+    for position, result in fixed:
+        non_fixed.insert(position, result)
+    return non_fixed
 
 
 if __name__ == "__main__":
