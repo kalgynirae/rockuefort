@@ -43,7 +43,7 @@ logger = logging.getLogger("rockuefort")
 ACTIONS = "index list copy link render scan".split()
 CACHE_PATH = os.path.expanduser("~/.cache/rockuefort/index")
 DIRS_CONFIG_PATH = os.path.expanduser("~/.config/rockuefort/dirs")
-KNOWN_OPTIONS = "@|"
+KNOWN_OPTIONS = "@|+-"
 PLAYLIST_LOAD_ARGS = "shuffle".split()
 PREFERRED_EXTENSIONS = ".oga .ogg .mp3 .flac".split()
 TAGS = "title artist album genre composer".split()
@@ -122,16 +122,19 @@ def action_render(args):
             base, _ = os.path.splitext(os.path.basename(file))
             out = os.path.join(temp_dir, ("{:0%sd}-{}.ogg" % max_digits)
                                          .format(n, base))
+
+            try:
+                volume_options = [
+                    "--norm=%s" % (3 * file.volume_adjustment),
+                ]
+            except AttributeError:
+                volume_options = []
             sox_args = [
                 "sox",
                 "--no-clobber",
-                "--show-progress",
-                "--replay-gain", "track",
+            ] + volume_options + [
                 file,
                 out,
-                #"compand", "0.5,3",
-                #    "5:-70,-60,-40,-40,-25,-30,-20,-20,-15,-10,-8,-5,-5",
-                #    "-2", "-70", "0.3",
                 "silence", "1", "0.1", "1%", # remove silence at the beginning
                 "reverse",
                 "silence", "1", "0.1", "1%", # remove silence at the end
@@ -144,7 +147,6 @@ def action_render(args):
         sox_args = [
             "sox",
             "--no-clobber",
-            "--show-progress",
         ]
         for file in processed_files:
             sox_args.append(file)
@@ -184,6 +186,13 @@ class CacheEntry(namedtuple("CacheEntry", ["path"] + TAGS)):
             return cls(**info)
         else:
             raise UnknownFileFormatError(path)
+
+
+class FileWrapper(str):
+    def __new__(cls, *args, volume_adjustment=None, **kwargs):
+        instance = super().__new__(cls, *args, **kwargs)
+        instance.volume_adjustment = volume_adjustment
+        return instance
 
 
 class MatchResult(list):
@@ -290,6 +299,10 @@ def get_results(entries, cache=None):
             file_info = "".join("\n  match: %s" % f for f in matched_files)
             logger.warn("Matched %s files (expected %s): %r%s",
                         n, entry.count, entry.query, file_info)
+        volume_adjustment = entry.options.count('+') - entry.options.count('-')
+        if volume_adjustment:
+            matched_files = [FileWrapper(file, volume_adjustment=volume_adjustment)
+                             for file in matched_files]
         if '|' in entry.options:
             if results and isinstance(results[-1], GroupedMatchResult):
                 results[-1].extend(matched_files)

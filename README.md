@@ -82,6 +82,10 @@ A query takes the following format:
     (e.g., with the `--shuffle` option)
 *   `|`: **grouped:** consecutive queries with this option will be treated as a
     single unit when reordering tracks
+*   `-`: **lower volume:** lower the volume of this track (can be specified
+    multiple times; affects `render` command only)
+*   `+`: **raise volume:** raise the volume of this track (can be specified
+    multiple times; affects `render` command only)
 
 ### Example playlists
 
