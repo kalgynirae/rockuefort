@@ -27,6 +27,7 @@ from collections import namedtuple
 import itertools
 import logging
 import math
+import multiprocessing
 import os
 import pickle
 import random
@@ -115,6 +116,7 @@ def action_list(args):
 def action_render(args):
     files = load_playlist(args["<playlist>"], **playlist_load_args(args))
     with tempfile.TemporaryDirectory() as temp_dir:
+        commands = []
         processed_files = []
         # Pre-process each file to remove silences
         max_digits = math.ceil(math.log10(len(files)))
@@ -140,8 +142,11 @@ def action_render(args):
                 "silence", "1", "0.05", "0.2%", # remove silence at the end
                 "reverse",
             ]
-            call(sox_args)
+            commands.append(sox_args)
             processed_files.append(out)
+
+        with multiprocessing.Pool() as pool:
+            pool.map(call, commands)
 
         # Concatenate the files
         sox_args = [
