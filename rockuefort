@@ -116,7 +116,7 @@ def action_render(args):
     files = load_playlist(args["<playlist>"], **playlist_load_args(args))
     with tempfile.TemporaryDirectory() as temp_dir:
         processed_files = []
-        # Pre-process each file to compress dynamics and remove silences
+        # Pre-process each file to remove silences
         max_digits = math.ceil(math.log10(len(files)))
         for n, file in enumerate(files, start=1):
             base, _ = os.path.splitext(os.path.basename(file))
@@ -125,7 +125,7 @@ def action_render(args):
 
             try:
                 volume_options = [
-                    "--norm=%s" % (3 * file.volume_adjustment),
+                    "--norm=%s" % file.gain,
                 ]
             except AttributeError:
                 volume_options = []
@@ -189,9 +189,9 @@ class CacheEntry(namedtuple("CacheEntry", ["path"] + TAGS)):
 
 
 class FileWrapper(str):
-    def __new__(cls, *args, volume_adjustment=None, **kwargs):
+    def __new__(cls, *args, gain=None, **kwargs):
         instance = super().__new__(cls, *args, **kwargs)
-        instance.volume_adjustment = volume_adjustment
+        instance.gain = gain
         return instance
 
 
@@ -301,7 +301,12 @@ def get_results(entries, cache=None):
                         n, entry.count, entry.query, file_info)
         volume_adjustment = entry.options.count('+') - entry.options.count('-')
         if volume_adjustment:
-            matched_files = [FileWrapper(file, volume_adjustment=volume_adjustment)
+            try:
+                gain = 10 * math.log2(x + 8) - 30
+            except ValueError:
+                logger.warn("Ignoring out-of-bounds volume adjustment %r",
+                            volume_adjustment)
+            matched_files = [FileWrapper(file, gain=gain)
                              for file in matched_files]
         if '|' in entry.options:
             if results and isinstance(results[-1], GroupedMatchResult):
