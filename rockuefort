@@ -229,7 +229,8 @@ class PlaylistEntry(namedtuple("PlaylistEntry", "query count options")):
             query_str, count, options = match.group("query", "count", "options")
             count = int(count) if count is not None else 1
             query_parts = query_str.split("|")
-            query = [part.split("=", maxsplit=1) for part in query_parts]
+            query = [part.split("=", maxsplit=1) for part in query_parts
+                     if part.split("=")[0] != "crop"]
             if not all(tag in TAGS for tag, _ in query):
                 raise QueryInvalidTagError
             options = options or ''
