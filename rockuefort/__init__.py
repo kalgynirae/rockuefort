@@ -436,7 +436,3 @@ def shuffled(results):
     for position, result in fixed:
         non_fixed.insert(position, result)
     return non_fixed
-
-
-if __name__ == "__main__":
-    sys.exit(main())
