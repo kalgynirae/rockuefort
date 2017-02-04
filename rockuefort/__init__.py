@@ -39,7 +39,7 @@ import tempfile
 from docopt import docopt
 import mutagen
 
-logger = logging.getLogger("rockuefort")
+logger = logging.getLogger(__name__)
 
 ACTIONS = {}
 CACHE_PATH = os.path.expanduser("~/.cache/rockuefort/index")
@@ -51,12 +51,10 @@ TAGS = "title artist album genre composer".split()
 
 
 def main():
-    root_logger = logging.getLogger()
-    formatter = logging.Formatter("%(name)s:%(levelname)s: %(message)s")
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    root_logger.addHandler(handler)
-    root_logger.setLevel(logging.DEBUG)
+    logging.basicConfig(
+        format="%(name)s:%(levelname)s: %(message)s",
+        level=logging.DEBUG,
+    )
 
     args = docopt(__doc__, version="Rockuefort 1.1")
     func = next(func for action, func in ACTIONS.items() if args[action])
