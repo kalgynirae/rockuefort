@@ -15,5 +15,5 @@ setup(
     name='rockuefort',
     packages=find_packages(),
     url='https://github.com/kalgynirae/rockuefort',
-    version='1.1',
+    version='1.2',
 )
