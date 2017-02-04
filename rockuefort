@@ -41,7 +41,7 @@ import mutagen
 
 logger = logging.getLogger("rockuefort")
 
-ACTIONS = "index list copy link render scan".split()
+ACTIONS = {}
 CACHE_PATH = os.path.expanduser("~/.cache/rockuefort/index")
 DIRS_CONFIG_PATH = os.path.expanduser("~/.config/rockuefort/dirs")
 KNOWN_OPTIONS = "@|+-"
@@ -59,12 +59,23 @@ def main():
     root_logger.setLevel(logging.DEBUG)
 
     args = docopt(__doc__, version="Rockuefort 1.1")
-    action = next(action for action in ACTIONS if args[action])
-    func = globals()["action_%s" % action]
+    func = next(func for action, func in ACTIONS.items() if args[action])
     return func(args)
 
 
-def action_copy(args):
+def action(func):
+    """Register func as an action that can be run from the command line
+
+    Trailing underscores are stripped from the function name so that it's
+    possible to have actions called things like 'list' without shadowing the
+    built-in.
+    """
+    ACTIONS[func.__name__.rstrip('_')] = func
+    return func
+
+
+@action
+def copy(args):
     files = load_playlist(args["<playlist>"], **playlist_load_args(args))
     with tempfile.TemporaryDirectory() as temp_dir:
         make_links(files, temp_dir, args["--no-number"])
@@ -78,7 +89,8 @@ def action_copy(args):
             call(rsync_args, ignore_return_code=True)
 
 
-def action_index(args):
+@action
+def index(args):
     dirs = load_dirs_config(DIRS_CONFIG_PATH)
     if args["--add"]:
         dirs.add(args["--add"])
@@ -94,7 +106,8 @@ def action_index(args):
         f.write("\n".join(dirs) + "\n")
 
 
-def action_link(args):
+@action
+def link(args):
     files = load_playlist(args["<playlist>"], **playlist_load_args(args))
     try:
         os.mkdir(args["<destination>"])
@@ -103,7 +116,8 @@ def action_link(args):
     make_links(files, args["<destination>"], args["--no-number"])
 
 
-def action_list(args):
+@action
+def list_(args):
     files = load_playlist(args["<playlist>"], **playlist_load_args(args))
     for file in files:
         if args["--strip"] and file.startswith(args["--strip"]):
@@ -113,7 +127,8 @@ def action_list(args):
         print(file, end=("\0" if args["--null"] else "\n"))
 
 
-def action_render(args):
+@action
+def render(args):
     files = load_playlist(args["<playlist>"], **playlist_load_args(args))
     with tempfile.TemporaryDirectory() as temp_dir:
         commands = []
@@ -159,7 +174,8 @@ def action_render(args):
         call(sox_args)
 
 
-def action_scan(args):
+@action
+def scan(args):
     mutable_cache = {}
     # Open the cache file *before* scanning so that we haven't wasted time
     # scanning if we find out the cache file can't be opened.
