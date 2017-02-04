@@ -135,7 +135,7 @@ def render(args):
         max_digits = math.ceil(math.log10(len(files)))
         for n, file in enumerate(files, start=1):
             base, _ = os.path.splitext(os.path.basename(file))
-            out = os.path.join(temp_dir, ("{:0%sd}-{}.ogg" % max_digits)
+            out = os.path.join(temp_dir, ("{:0%sd}-{}.flac" % max_digits)
                                          .format(n, base))
 
             try:
