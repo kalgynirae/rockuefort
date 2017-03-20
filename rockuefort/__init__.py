@@ -95,7 +95,7 @@ def copy(args):
 
 @action
 def index(args):
-    dirs = load_dirs_config(DIRS_CONFIG_PATH)
+    dirs, _ = load_dirs_config(DIRS_CONFIG_PATH)
     if args["--add"]:
         dirs.add(args["--add"])
     elif args["--remove"]:
@@ -199,9 +199,14 @@ def scan(args):
     # Open the cache file *before* scanning so that we haven't wasted time
     # scanning if we find out the cache file can't be opened.
     os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+    dirs, excludes = load_dirs_config(DIRS_CONFIG_PATH)
     with open(CACHE_PATH, "wb") as out:
-        for dir in load_dirs_config(DIRS_CONFIG_PATH):
-            for base, _, files in os.walk(dir):
+        for dir in dirs:
+            for base, dirnames, files in os.walk(dir):
+                if base in excludes:
+                    logger.debug("excluding: %s", base)
+                    dirnames[:] = []
+                    continue
                 paths = (os.path.join(base, f) for f in files)
                 for path in paths:
                     logger.info(path)
@@ -373,10 +378,18 @@ def load_cache(path):
 def load_dirs_config(path):
     try:
         with open(path) as f:
-            return set(f.read().splitlines())
+            lines = f.read().splitlines()
     except FileNotFoundError:
-        logger.warn("No dirs config file found.")
-        return set()
+        logger.warn("No config found at {} (will be created if needed)".format(path))
+        return set(), set()
+    dirs = set()
+    excludes = set()
+    for line in lines:
+        if line.startswith('-'):
+            excludes.add(os.path.normpath(line[1:]))
+        else:
+            dirs.add(os.path.normpath(line))
+    return dirs, excludes
 
 
 def load_playlist(path, *, shuffle=False):
