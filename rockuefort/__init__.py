@@ -5,12 +5,13 @@ music library, and outputs the songs matched by the playlist in a few
 different ways.
 
 Usage: rockuefort index [--add DIR|--remove DIR]
+       rockuefort scan
        rockuefort list [--strip PREFIX] [--prepend PREFIX] [--null]
                        [--shuffle] <playlist>
        rockuefort (copy|link) [--no-number] [--shuffle]
                               <playlist> <destination>
        rockuefort render [--shuffle] <playlist> <outfile>
-       rockuefort scan
+       rockuefort check <playlist>
        rockuefort --help
        rockuefort --version
 
@@ -70,6 +71,11 @@ def action(func):
     """
     ACTIONS[func.__name__.rstrip('_')] = func
     return func
+
+
+@action
+def check(args):
+    load_playlist(args["<playlist>"], **playlist_load_args(args))
 
 
 @action
