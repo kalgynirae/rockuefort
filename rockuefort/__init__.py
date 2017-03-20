@@ -162,10 +162,24 @@ def render(args):
         with multiprocessing.Pool() as pool:
             pool.map(call, commands)
 
+        # Write out an empty file that we'll use first so that Sox won't copy
+        # any metadata into the final output.
+        empty_file = os.path.join(temp_dir, "empty.flac")
+        empty_args = [
+            "sox",
+            "-n",
+            "-r", "44100",
+            "-c", "2",
+            empty_file,
+            "trim", "0", "0",
+        ]
+        call(empty_args)
+
         # Concatenate the files
         sox_args = [
             "sox",
             "--no-clobber",
+            empty_file,
         ]
         for file in processed_files:
             sox_args.append(file)
