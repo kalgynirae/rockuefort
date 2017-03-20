@@ -414,13 +414,18 @@ def matches(value, attr_list):
     """Return whether value matches the attribute described by attr_list
 
     Attributes come from mutagen as lists of strings (except for the "path"
-    attribute). We want to be able to look for both full matches and substring
-    matches, so we surround each string with double quotes and then join them
-    togehter. Then, if value is surrounded by double quotes, it will
-    effectively only match for full string matches; otherwise, it will match
-    substrings.
+    attribute). We just surround each string with two special characters and
+    then jam them together into one string to match against. If the value is
+    surrounded by double quotes, we replace those quotes with the same special
+    characters before trying to match. This allows us to get the desired result
+    while doing a simple substring match.
     """
-    combined_attr_values = "".join('"%s"' % s for s in attr_list).lower()
+    chars = ["\N{RIGHT-TO-LEFT OVERRIDE}", "\N{SNOWMAN}"]
+    if value.startswith('"') and value.endswith('"'):
+        value = "{}{}{}".format(chars[0], value[1:-1], chars[1])
+    combined_attr_values = "".join(
+        "{}{}{}".format(chars[0], s, chars[1]) for s in attr_list
+    ).lower()
     return value.lower() in combined_attr_values
 
 
