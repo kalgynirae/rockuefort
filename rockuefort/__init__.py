@@ -427,18 +427,13 @@ def matches(value, attr_list):
     """Return whether value matches the attribute described by attr_list
 
     Attributes come from mutagen as lists of strings (except for the "path"
-    attribute). We just surround each string with two special characters and
-    then jam them together into one string to match against. If the value is
-    surrounded by double quotes, we replace those quotes with the same special
-    characters before trying to match. This allows us to get the desired result
-    while doing a simple substring match.
+    attribute). If the value is surrounded by double quotes, we look for exact
+    matches; otherwise, we join together the attribute list with Snowman
+    characters and then do a substring match against the joined string.
     """
-    chars = ["\N{RIGHT-TO-LEFT OVERRIDE}", "\N{SNOWMAN}"]
     if value.startswith('"') and value.endswith('"'):
-        value = "{}{}{}".format(chars[0], value[1:-1], chars[1])
-    combined_attr_values = "".join(
-        "{}{}{}".format(chars[0], s, chars[1]) for s in attr_list
-    ).lower()
+        return value[1:-1] in attr_list
+    combined_attr_values = "\N{SNOWMAN}".join(attr_list).lower()
     return value.lower() in combined_attr_values
 
 
