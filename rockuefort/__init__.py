@@ -144,18 +144,24 @@ def render(args):
             out = os.path.join(temp_dir, ("{:0%sd}-{}.flac" % max_digits)
                                          .format(n, base))
 
-            try:
+            if file.gain:
                 volume_options = [
                     "--norm=%s" % file.gain,
                 ]
-            except AttributeError:
+            else:
                 volume_options = []
+            if file.trim_positions:
+                trim = ["trim"] + ["=%s" % pos for pos in file.trim_positions]
+            else:
+                trim = []
+
             sox_args = [
                 "sox",
                 "--no-clobber",
-            ] + volume_options + [
+                *volume_options,
                 file,
                 out,
+                *trim,
                 "silence", "1", "0.05", "0.1%", # remove silence at the beginning
                 "reverse",
                 "silence", "1", "0.05", "0.2%", # remove silence at the end
@@ -234,9 +240,10 @@ class CacheEntry(namedtuple("CacheEntry", ["path"] + TAGS)):
 
 
 class FileWrapper(str):
-    def __new__(cls, *args, gain=None, **kwargs):
+    def __new__(cls, *args, gain=None, trim_positions=None, **kwargs):
         instance = super().__new__(cls, *args, **kwargs)
         instance.gain = gain
+        instance.trim_positions = trim_positions
         return instance
 
 
@@ -252,7 +259,7 @@ class GroupedMatchResult(MatchResult):
     pass
 
 
-class PlaylistEntry(namedtuple("PlaylistEntry", "query count options")):
+class PlaylistEntry(namedtuple("PlaylistEntry", "query count options crop")):
     _matcher = re.compile(
         r"""(?P<options>[^\w]+)?
             (?:(?P<count>[\d]+):)?
@@ -268,17 +275,17 @@ class PlaylistEntry(namedtuple("PlaylistEntry", "query count options")):
         if match:
             query_str, count, options = match.group("query", "count", "options")
             count = int(count) if count is not None else 1
-            query_parts = query_str.split("|")
-            query = [part.split("=", maxsplit=1) for part in query_parts
-                     if part.split("=")[0] != "crop"]
+            query_parts = [part.split("=", maxsplit=1)  for part in query_str.split("|")]
+            query = [(tag, value) for tag, value in query_parts if tag != "crop"]
             if not all(tag in TAGS for tag, _ in query):
                 raise QueryInvalidTagError
+            crop = next((value for tag, value in query_parts if tag == "crop"), None)
             options = options or ''
             unknown_options = set(options) - set(KNOWN_OPTIONS)
             if unknown_options:
                 logger.warn("Ignoring unknown query options %r",
                             "".join(unknown_options))
-            return cls(query, count, options)
+            return cls(query, count, options, crop)
         else:
             raise QueryParseError
 
@@ -346,14 +353,16 @@ def get_results(entries, cache=None):
             logger.warn("Matched %s files (expected %s): %r%s",
                         n, entry.count, entry.query, file_info)
         volume_adjustment = entry.options.count('+') - entry.options.count('-')
+        options = {}
         if volume_adjustment:
             try:
-                gain = 10 * math.log2(volume_adjustment + 8) - 30
+                options["gain"] = 10 * math.log2(volume_adjustment + 8) - 30
             except ValueError:
                 logger.warn("Ignoring out-of-bounds volume adjustment %r",
                             volume_adjustment)
-            matched_files = [FileWrapper(file, gain=gain)
-                             for file in matched_files]
+        if entry.crop:
+            options["trim_positions"] = entry.crop.split(',')
+        matched_files = [FileWrapper(file, **options) for file in matched_files]
         if '|' in entry.options:
             if results and isinstance(results[-1], GroupedMatchResult):
                 results[-1].extend(matched_files)

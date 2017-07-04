@@ -70,7 +70,8 @@ A query takes the following format:
 *   `O`: zero or more special option characters (defaults to nothing)
 *   `N`: the number of files this query is expected to match (defaults
     to `1`)
-*   `TAG`: one of `title`, `artist`, `album`, or `genre`
+*   `TAG`: one of `title`, `artist`, `album`, `genre`, or `crop` (see
+    *Cropping* below)
 *   `VALUE`: a substring of the value to match. It can contain any
     character except `|`. Matching files will have this as a substring
     of the real tag value. It can be surrounded with double quotes to
@@ -86,6 +87,15 @@ A query takes the following format:
     multiple times; affects `render` command only)
 *   `+`: **raise volume:** raise the volume of this track (can be specified
     multiple times; affects `render` command only)
+
+### Cropping
+
+The format of a crop tag is
+
+    crop=TIME[,TIME...]
+
+where `TIME` is a string like 2:13.5 (two minutes, 13.5 seconds) or 90 (90
+seconds).
 
 ### Example playlists
 
