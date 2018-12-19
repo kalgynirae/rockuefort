@@ -167,6 +167,7 @@ def render(args):
                 "silence", "1", "0.05", "0.2%", # remove silence at the end
                 "reverse",
                 "channels", "2",
+                "rate", "44100",
             ]
             commands.append(sox_args)
             processed_files.append(out)
