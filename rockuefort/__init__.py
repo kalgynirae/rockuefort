@@ -265,8 +265,8 @@ class PlaylistEntry(namedtuple("PlaylistEntry", "query count options crop")):
         r"""(?P<options>[^\w]+)?
             (?:(?P<count>[\d]+):)?
             (?P<query>
-                [\w]+=[^|]+
-                (?:\|[\w]+=[^|]+)*
+                [\w]+=[^|]*
+                (?:\|[\w]+=[^|]*)*
             )""",
         re.VERBOSE).fullmatch
 
@@ -441,6 +441,8 @@ def matches(value, attr_list):
     matches; otherwise, we join together the attribute list with Snowman
     characters and then do a substring match against the joined string.
     """
+    if value == "":
+        return len(attr_list) == 0
     if value.startswith('"') and value.endswith('"'):
         return value[1:-1] in attr_list
     combined_attr_values = "\N{SNOWMAN}".join(attr_list).lower()
