@@ -25,14 +25,16 @@ Options:
   --strip PREFIX    Strip PREFIX from each printed filename
 """
 from collections import namedtuple
+from inspect import iscoroutinefunction
+import asyncio
 import itertools
 import logging
 import math
-import multiprocessing
 import os
 import pickle
 import random
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -59,7 +61,7 @@ def main():
 
     args = docopt(__doc__, version="Rockuefort 1.1")
     func = next(func for action, func in ACTIONS.items() if args[action])
-    return func(args)
+    return asyncio.run(func(args))
 
 
 def action(func):
@@ -69,32 +71,34 @@ def action(func):
     possible to have actions called things like 'list' without shadowing the
     built-in.
     """
+    if not iscoroutinefunction(func):
+        raise TypeError(f"@action: function {func} must be async")
     ACTIONS[func.__name__.rstrip('_')] = func
     return func
 
 
 @action
-def check(args):
+async def check(args):
     load_playlist(args["<playlist>"], **playlist_load_args(args))
 
 
 @action
-def copy(args):
+async def copy(args):
     files = load_playlist(args["<playlist>"], **playlist_load_args(args))
     with tempfile.TemporaryDirectory() as temp_dir:
         make_links(files, temp_dir, args["--no-number"])
         logger.info("Performing a dry run of rsync...")
-        rsync_args = ["rsync", "--recursive", "--itemize-changes",
-                      "--copy-links", "--times", "--delete", "--dry-run",
+        rsync_args = ["rsync", "--itemize-changes", "--copy-links", "--inplace",
+                      "--size-only", "--delete", "--dirs", "--dry-run",
                       temp_dir + "/", args["<destination>"]]
-        call(rsync_args, ignore_return_code=True)
+        await call(rsync_args, ignore_return_code=True)
         if confirm("Proceed with the rsync?"):
             rsync_args.remove("--dry-run")
-            call(rsync_args, ignore_return_code=True)
+            await call(rsync_args, ignore_return_code=True)
 
 
 @action
-def index(args):
+async def index(args):
     dirs, _ = load_dirs_config(DIRS_CONFIG_PATH)
     if args["--add"]:
         dirs.add(args["--add"])
@@ -111,7 +115,7 @@ def index(args):
 
 
 @action
-def link(args):
+async def link(args):
     files = load_playlist(args["<playlist>"], **playlist_load_args(args))
     try:
         os.mkdir(args["<destination>"])
@@ -121,7 +125,7 @@ def link(args):
 
 
 @action
-def list_(args):
+async def list_(args):
     files = load_playlist(args["<playlist>"], **playlist_load_args(args))
     for file in files:
         if args["--strip"] and file.startswith(args["--strip"]):
@@ -131,18 +135,24 @@ def list_(args):
         print(file, end=("\0" if args["--null"] else "\n"))
 
 
+limit_semaphore = asyncio.Semaphore(8)
+
+async def limit(coro):
+    async with limit_semaphore:
+        return await coro
+
+
 @action
-def render(args):
+async def render(args):
     files = load_playlist(args["<playlist>"], **playlist_load_args(args))
     with tempfile.TemporaryDirectory() as temp_dir:
-        commands = []
+        coroutines = []
         processed_files = []
-        # Pre-process each file to remove silences
-        max_digits = math.ceil(math.log10(len(files)))
+        # Pre-process each file to crop and adjust volume
+        max_digits = len(str(len(files)))
         for n, file in enumerate(files, start=1):
             base, _ = os.path.splitext(os.path.basename(file))
-            out = os.path.join(temp_dir, ("{:0%sd}-{}.flac" % max_digits)
-                                         .format(n, base))
+            out = os.path.join(temp_dir, ("{:0%sd}-{}.flac" % max_digits).format(n, base))
 
             if file.gain:
                 volume_options = [
@@ -169,11 +179,10 @@ def render(args):
                 "channels", "2",
                 "rate", "44100",
             ]
-            commands.append(sox_args)
+            coroutines.append(limit(call(sox_args)))
             processed_files.append(out)
 
-        with multiprocessing.Pool() as pool:
-            pool.map(call, commands)
+        await asyncio.gather(*coroutines)
 
         # Write out an empty file that we'll use first so that Sox won't copy
         # any metadata into the final output.
@@ -186,7 +195,7 @@ def render(args):
             empty_file,
             "trim", "0", "0",
         ]
-        call(empty_args)
+        await call(empty_args)
 
         # Concatenate the files
         sox_args = [
@@ -197,11 +206,11 @@ def render(args):
         for file in processed_files:
             sox_args.append(file)
         sox_args.append(args["<outfile>"])
-        call(sox_args)
+        await call(sox_args)
 
 
 @action
-def scan(args):
+async def scan(args):
     mutable_cache = {}
     # Open the cache file *before* scanning so that we haven't wasted time
     # scanning if we find out the cache file can't be opened.
@@ -303,14 +312,12 @@ class UnknownFileFormatError(Exception):
     pass
 
 
-def call(args, ignore_return_code=False):
-    logger.info(" ".join(args))
-    try:
-        subprocess.check_call(args)
-    except subprocess.CalledProcessError as e:
-        if not ignore_return_code:
-            logger.error(e)
-            sys.exit(2)
+async def call(args, ignore_return_code=False):
+    logger.info(f"Running command «{shlex.join(args)}»")
+    proc = await asyncio.create_subprocess_exec(*args)
+    ret = await proc.wait()
+    if not ignore_return_code and ret != 0:
+        raise RuntimeError(f"Command exited {ret} «{shlex.join(args)}")
 
 
 def confirm(question):
