@@ -1,7 +1,7 @@
 Rockuefort
 ==========
 
-**Rockuefort** "compiles" your playlists. It indexes your music
+**Rockuefort** “compiles” your playlists. It indexes your music
 directory and then searches through the metadata to locate the files
 corresponding to the entries in your playlist. This keeps your playlist
 decoupled from the actual paths and filenames of your music library.
